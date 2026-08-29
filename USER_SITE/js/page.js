@@ -61,10 +61,25 @@ const TRADE_SERVER_URL =
 
 
 /* =========================================================
-   GLOBAL TIMER
+   GLOBALS
 ========================================================= */
 
 let tradeTimerInterval =
+  null;
+
+let currentUser =
+  null;
+
+let currentUserData =
+  null;
+
+let unsubscribeUser =
+  null;
+
+let unsubscribeTrades =
+  null;
+
+let unsubscribeOffers =
   null;
 
 
@@ -93,26 +108,11 @@ function money(value) {
 function escapeHtml(value) {
 
   return String(value ?? "")
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 
 }
 
@@ -125,9 +125,7 @@ function formatDate(value) {
 
   }
 
-
   let ms = 0;
-
 
   if (
     typeof value?.toMillis ===
@@ -137,21 +135,25 @@ function formatDate(value) {
     ms =
       value.toMillis();
 
+  } else if (
+    typeof value === "number"
+  ) {
+
+    ms =
+      value;
+
   } else {
 
     ms =
-      new Date(value)
-        .getTime();
+      new Date(value).getTime();
 
   }
-
 
   if (!ms) {
 
     return "Processing...";
 
   }
-
 
   return new Date(ms)
     .toLocaleString();
@@ -167,7 +169,6 @@ function getTimestampMs(value) {
 
   }
 
-
   if (
     typeof value.toMillis ===
     "function"
@@ -177,23 +178,15 @@ function getTimestampMs(value) {
 
   }
 
-
   if (
-    typeof value ===
-    "number"
+    typeof value === "number"
   ) {
 
     return value;
 
   }
 
-
-  const parsed =
-    new Date(value)
-      .getTime();
-
-
-  return parsed;
+  return new Date(value).getTime();
 
 }
 
@@ -206,17 +199,14 @@ function showMessage(
   const el =
     $("tradeMsg");
 
-
   if (!el) {
 
     return;
 
   }
 
-
   el.textContent =
     text;
-
 
   el.style.color =
     success
@@ -224,23 +214,6 @@ function showMessage(
       : "#ff7d86";
 
 }
-
-
-/* =========================================================
-   CURRENT USER
-========================================================= */
-
-let currentUser =
-  null;
-
-let currentUserData =
-  null;
-
-let unsubscribeUser =
-  null;
-
-let unsubscribeTrades =
-  null;
 
 
 /* =========================================================
@@ -256,7 +229,6 @@ async function getAuthToken() {
     );
 
   }
-
 
   return await getIdToken(
     currentUser,
@@ -277,7 +249,6 @@ async function tradeServerRequest(
 
   const token =
     await getAuthToken();
-
 
   const response =
     await fetch(
@@ -329,15 +300,10 @@ async function tradeServerRequest(
   if (!response.ok) {
 
     console.error(
-
       "Trade server response:",
-
       response.status,
-
       data
-
     );
-
 
     throw new Error(
 
@@ -360,6 +326,10 @@ async function tradeServerRequest(
 ========================================================= */
 
 async function loadUser(user) {
+
+  currentUser =
+    user;
+
 
   const userRef =
     doc(
@@ -399,10 +369,6 @@ async function loadUser(user) {
   }
 
 
-  currentUser =
-    user;
-
-
   currentUserData =
     data;
 
@@ -412,8 +378,11 @@ async function loadUser(user) {
 
   startUserListener();
 
-
   startTradeListener();
+
+  startOffersListener();
+
+  loadReferralData();
 
 }
 
@@ -462,17 +431,119 @@ function updateUserUI() {
   }
 
 
+  const name =
+    currentUserData.name ||
+
+    currentUserData.displayName ||
+
+    currentUser?.displayName ||
+
+    "Trader";
+
+
   if ($("userName")) {
 
     $("userName").textContent =
+      name;
 
-      currentUserData.name ||
+  }
 
-      currentUserData.displayName ||
 
-      currentUser?.displayName ||
+  /* Referral fields */
 
-      "Trader";
+  const referralCode =
+
+    currentUserData.referralCode ||
+
+    currentUserData.refCode ||
+
+    currentUserData.referral_code ||
+
+    currentUserData.code ||
+
+    "";
+
+
+  const referralCount =
+
+    Number(
+
+      currentUserData.referralCount ||
+
+      currentUserData.referrals ||
+
+      currentUserData.referralUsers ||
+
+      0
+
+    );
+
+
+  const referralEarnings =
+
+    Number(
+
+      currentUserData.referralEarnings ||
+
+      currentUserData.referralIncome ||
+
+      currentUserData.referralProfit ||
+
+      0
+
+    );
+
+
+  setTextIfExists(
+    "referralCode",
+    referralCode || "N/A"
+  );
+
+
+  setTextIfExists(
+    "refCode",
+    referralCode || "N/A"
+  );
+
+
+  setTextIfExists(
+    "referralCount",
+    String(referralCount)
+  );
+
+
+  setTextIfExists(
+    "referrals",
+    String(referralCount)
+  );
+
+
+  setTextIfExists(
+    "referralEarnings",
+    money(referralEarnings)
+  );
+
+
+  setTextIfExists(
+    "referralIncome",
+    money(referralEarnings)
+  );
+
+}
+
+
+function setTextIfExists(
+  id,
+  value
+) {
+
+  const element =
+    $(id);
+
+  if (element) {
+
+    element.textContent =
+      value;
 
   }
 
@@ -532,16 +603,15 @@ function startUserListener() {
 
         updateUserUI();
 
+        loadReferralData();
+
       },
 
       error => {
 
         console.error(
-
           "User listener error:",
-
           error
-
         );
 
       }
@@ -617,19 +687,15 @@ function startTradeListener() {
           (a, b) => {
 
             const aTime =
-              a.createdAt?.toMillis?.() ||
               getTimestampMs(
                 a.createdAt
-              ) ||
-              0;
+              ) || 0;
 
 
             const bTime =
-              b.createdAt?.toMillis?.() ||
               getTimestampMs(
                 b.createdAt
-              ) ||
-              0;
+              ) || 0;
 
 
             return (
@@ -651,6 +717,11 @@ function startTradeListener() {
         );
 
 
+        renderTradeHistory(
+          trades
+        );
+
+
         updateStats(
           trades
         );
@@ -660,11 +731,14 @@ function startTradeListener() {
       error => {
 
         console.error(
-
           "Trade listener error:",
-
           error
+        );
 
+
+        showCollectionError(
+          "trades",
+          error
         );
 
       }
@@ -685,7 +759,9 @@ function updateStats(
   const openTrades =
     trades.filter(
       trade =>
-        trade.status ===
+        String(
+          trade.status || ""
+        ).toUpperCase() ===
         "OPEN"
     );
 
@@ -706,7 +782,9 @@ function updateStats(
     trade => {
 
       if (
-        trade.status ===
+        String(
+          trade.status || ""
+        ).toUpperCase() ===
         "SETTLED"
       ) {
 
@@ -733,7 +811,7 @@ function updateStats(
 
 
 /* =========================================================
-   FORMAT COUNTDOWN
+   COUNTDOWN
 ========================================================= */
 
 function formatCountdown(
@@ -776,10 +854,6 @@ function formatCountdown(
 }
 
 
-/* =========================================================
-   START TRADE COUNTDOWN
-========================================================= */
-
 function startTradeCountdown() {
 
   if (tradeTimerInterval) {
@@ -788,23 +862,18 @@ function startTradeCountdown() {
       tradeTimerInterval
     );
 
-    tradeTimerInterval =
-      null;
-
   }
 
 
   function updateTimers() {
 
-    const timerElements =
+    const elements =
       document.querySelectorAll(
         ".trade-countdown"
       );
 
 
-    if (
-      !timerElements.length
-    ) {
+    if (!elements.length) {
 
       return;
 
@@ -815,7 +884,7 @@ function startTradeCountdown() {
       Date.now();
 
 
-    timerElements.forEach(
+    elements.forEach(
       timer => {
 
         const settleAt =
@@ -850,18 +919,9 @@ function startTradeCountdown() {
           timer.textContent =
             "Settling...";
 
-          timer.classList.add(
-            "settling"
-          );
-
           return;
 
         }
-
-
-        timer.classList.remove(
-          "settling"
-        );
 
 
         timer.textContent =
@@ -910,23 +970,21 @@ function renderDashboardTrades(
     trades
       .filter(
         trade =>
-          trade.status ===
+          String(
+            trade.status || ""
+          ).toUpperCase() ===
           "OPEN"
       )
       .slice(0, 5);
 
 
-  if (
-    !openTrades.length
-  ) {
+  if (!openTrades.length) {
 
     box.innerHTML =
       '<div class="empty">No open trades.</div>';
 
 
-    if (
-      tradeTimerInterval
-    ) {
+    if (tradeTimerInterval) {
 
       clearInterval(
         tradeTimerInterval
@@ -944,117 +1002,112 @@ function renderDashboardTrades(
 
 
   box.innerHTML =
-    openTrades
-      .map(
-        trade => {
+    openTrades.map(
+      trade => {
 
-          const side =
-            String(
-              trade.side ||
-              ""
-            )
-            .toUpperCase();
+        const side =
+          String(
+            trade.side ||
+            ""
+          ).toUpperCase();
 
 
-          const settleAt =
-            getTimestampMs(
-              trade.settleAt
-            );
+        const settleAt =
+          getTimestampMs(
+            trade.settleAt
+          );
 
 
-          return `
+        return `
+
+          <div
+            class="request-row"
+            data-trade-id="${escapeHtml(
+              trade.id
+            )}"
+          >
 
             <div
-              class="request-row"
-              data-trade-id="${escapeHtml(
-                trade.id
-              )}"
+              class="request-main"
             >
 
               <div
-                class="request-main"
+                class="request-title"
               >
 
-                <div
-                  class="request-title"
-                >
+                ${escapeHtml(
+                  side
+                )}
 
-                  ${escapeHtml(
-                    side
-                  )}
+                •
 
-                  •
-
-                  ${escapeHtml(
-                    money(
-                      trade.amount
-                    )
-                  )}
-
-                </div>
-
-
-                <div
-                  class="request-meta"
-                >
-
-                  ${escapeHtml(
-                    formatDate(
-                      trade.createdAt
-                    )
-                  )}
-
-                </div>
+                ${escapeHtml(
+                  money(
+                    trade.amount
+                  )
+                )}
 
               </div>
 
 
               <div
-                class="request-amount"
-                style="
-                  text-align:right;
-                  min-width:90px;
-                "
+                class="request-meta"
               >
 
-                <div
-                  class="trade-countdown"
-                  data-settle-at="${settleAt}"
-                  style="
-                    font-size:18px;
-                    font-weight:800;
-                    line-height:1.2;
-                  "
-                >
-                  ${formatCountdown(
-                    Math.max(
-                      0,
-                      settleAt -
-                      Date.now()
-                    )
-                  )}
-                </div>
-
-
-                <div
-                  style="
-                    font-size:11px;
-                    opacity:.75;
-                    margin-top:3px;
-                  "
-                >
-                  OPEN
-                </div>
+                ${escapeHtml(
+                  formatDate(
+                    trade.createdAt
+                  )
+                )}
 
               </div>
 
             </div>
 
-          `;
 
-        }
-      )
-      .join("");
+            <div
+              class="request-amount"
+              style="
+                text-align:right;
+                min-width:90px;
+              "
+            >
+
+              <div
+                class="trade-countdown"
+                data-settle-at="${settleAt}"
+                style="
+                  font-size:18px;
+                  font-weight:800;
+                "
+              >
+                ${formatCountdown(
+                  Math.max(
+                    0,
+                    settleAt -
+                    Date.now()
+                  )
+                )}
+              </div>
+
+
+              <div
+                style="
+                  font-size:11px;
+                  opacity:.75;
+                "
+              >
+                OPEN
+              </div>
+
+            </div>
+
+          </div>
+
+        `;
+
+      }
+    ).join("");
 
 
   startTradeCountdown();
@@ -1063,7 +1116,7 @@ function renderDashboardTrades(
 
 
 /* =========================================================
-   TRADES PAGE
+   TRADE PAGE
 ========================================================= */
 
 function renderTradesPage(
@@ -1081,9 +1134,7 @@ function renderTradesPage(
   }
 
 
-  if (
-    !trades.length
-  ) {
+  if (!trades.length) {
 
     box.innerHTML =
       '<div class="empty">No trades yet.</div>';
@@ -1094,131 +1145,903 @@ function renderTradesPage(
 
 
   box.innerHTML =
-    trades
-      .map(
-        trade => {
+    trades.map(
+      trade => {
 
-          const side =
-            String(
-              trade.side ||
-              ""
-            )
-            .toUpperCase();
+        const side =
+          String(
+            trade.side ||
+            ""
+          ).toUpperCase();
 
 
-          const status =
-            String(
-              trade.status ||
-              "OPEN"
-            )
-            .toUpperCase();
+        const status =
+          String(
+            trade.status ||
+            "OPEN"
+          ).toUpperCase();
 
 
-          const profit =
-            Number(
-              trade.profit ||
-              0
-            );
+        const profit =
+          Number(
+            trade.profit ||
+            0
+          );
 
 
-          let resultText =
-            "OPEN";
+        let resultText =
+          "OPEN";
 
 
-          if (
-            status ===
-            "SETTLED"
-          ) {
+        if (
+          status ===
+          "SETTLED"
+        ) {
 
-            resultText =
-              profit >= 0
+          resultText =
+            profit >= 0
 
-                ? "+" +
-                  money(profit)
+              ? "+" +
+                money(profit)
 
-                : "-" +
+              : "-" +
+                money(
+                  Math.abs(
+                    profit
+                  )
+                );
+
+        }
+
+
+        return `
+
+          <div class="request-row">
+
+            <div class="request-main">
+
+              <div class="request-title">
+
+                ${escapeHtml(
+                  side
+                )}
+
+                •
+
+                ${escapeHtml(
                   money(
-                    Math.abs(
-                      profit
-                    )
-                  );
-
-          }
-
-
-          return `
-
-            <div
-              class="request-row"
-            >
-
-              <div
-                class="request-main"
-              >
-
-                <div
-                  class="request-title"
-                >
-
-                  ${escapeHtml(
-                    side
-                  )}
-
-                  •
-
-                  ${escapeHtml(
-                    money(
-                      trade.amount
-                    )
-                  )}
-
-                </div>
-
-
-                <div
-                  class="request-meta"
-                >
-
-                  ${escapeHtml(
-                    status
-                  )}
-
-                  <br>
-
-                  ${escapeHtml(
-                    formatDate(
-                      trade.createdAt
-                    )
-                  )}
-
-                </div>
+                    trade.amount
+                  )
+                )}
 
               </div>
 
 
-              <div
-                class="request-amount"
-              >
+              <div class="request-meta">
 
                 ${escapeHtml(
-                  resultText
+                  status
+                )}
+
+                <br>
+
+                ${escapeHtml(
+                  formatDate(
+                    trade.createdAt
+                  )
                 )}
 
               </div>
 
             </div>
 
-          `;
 
-        }
-      )
-      .join("");
+            <div class="request-amount">
+
+              ${escapeHtml(
+                resultText
+              )}
+
+            </div>
+
+          </div>
+
+        `;
+
+      }
+    ).join("");
 
 }
 
 
 /* =========================================================
-   OPEN DEMO TRADE
+   COMPLETE TRADE HISTORY
+========================================================= */
+
+function renderTradeHistory(
+  trades
+) {
+
+  const possibleIds = [
+
+    "tradeHistory",
+
+    "history",
+
+    "historyList",
+
+    "tradeHistoryList",
+
+    "tradingHistory"
+
+  ];
+
+
+  let box =
+    null;
+
+
+  for (
+    const id of possibleIds
+  ) {
+
+    if ($(id)) {
+
+      box =
+        $(id);
+
+      break;
+
+    }
+
+  }
+
+
+  if (!box) {
+
+    return;
+
+  }
+
+
+  if (!trades.length) {
+
+    box.innerHTML =
+      '<div class="empty">No trade history yet.</div>';
+
+    return;
+
+  }
+
+
+  const settledTrades =
+    trades.filter(
+      trade =>
+
+        String(
+          trade.status ||
+          ""
+        ).toUpperCase() ===
+        "SETTLED"
+
+    );
+
+
+  if (!settledTrades.length) {
+
+    box.innerHTML =
+      '<div class="empty">No completed trades yet.</div>';
+
+    return;
+
+  }
+
+
+  box.innerHTML =
+    settledTrades.map(
+      trade => {
+
+        const profit =
+          Number(
+            trade.profit ||
+            0
+          );
+
+
+        const isWin =
+          profit >= 0;
+
+
+        const result =
+          isWin
+            ? "WIN"
+            : "LOSS";
+
+
+        const resultAmount =
+          isWin
+
+            ? "+" +
+              money(profit)
+
+            : "-" +
+              money(
+                Math.abs(
+                  profit
+                )
+              );
+
+
+        return `
+
+          <div
+            class="request-row"
+          >
+
+            <div
+              class="request-main"
+            >
+
+              <div
+                class="request-title"
+              >
+
+                ${escapeHtml(
+                  String(
+                    trade.side ||
+                    ""
+                  ).toUpperCase()
+                )}
+
+                •
+
+                ${escapeHtml(
+                  money(
+                    trade.amount
+                  )
+                )}
+
+              </div>
+
+
+              <div
+                class="request-meta"
+              >
+
+                ${escapeHtml(
+                  result
+                )}
+
+                <br>
+
+                ${escapeHtml(
+                  formatDate(
+                    trade.settledAt ||
+                    trade.createdAt
+                  )
+                )}
+
+              </div>
+
+            </div>
+
+
+            <div
+              class="request-amount"
+              style="
+                font-weight:800;
+              "
+            >
+
+              ${escapeHtml(
+                resultAmount
+              )}
+
+            </div>
+
+          </div>
+
+        `;
+
+      }
+    ).join("");
+
+}
+
+
+/* =========================================================
+   OFFERS LISTENER
+========================================================= */
+
+function startOffersListener() {
+
+  if (unsubscribeOffers) {
+
+    unsubscribeOffers();
+
+    unsubscribeOffers =
+      null;
+
+  }
+
+
+  const offersBox =
+    findFirstElement([
+
+      "offers",
+
+      "offersList",
+
+      "offerList",
+
+      "activeOffers",
+
+      "activeOffersList"
+
+    ]);
+
+
+  /*
+   * If the current HTML does not have an
+   * offers container, still listen to Firestore.
+   */
+
+  const offersQuery =
+    query(
+
+      collection(
+        db,
+        "offers"
+      ),
+
+      limit(100)
+
+    );
+
+
+  unsubscribeOffers =
+    onSnapshot(
+
+      offersQuery,
+
+      snapshot => {
+
+        const offers =
+          snapshot.docs.map(
+            d => ({
+
+              id:
+                d.id,
+
+              ...d.data()
+
+            })
+          );
+
+
+        renderOffers(
+          offers
+        );
+
+      },
+
+      error => {
+
+        console.error(
+          "Offers listener error:",
+          error
+        );
+
+
+        if (offersBox) {
+
+          offersBox.innerHTML =
+            '<div class="empty">Offers could not be loaded.</div>';
+
+        }
+
+      }
+
+    );
+
+}
+
+
+/* =========================================================
+   RENDER OFFERS
+========================================================= */
+
+function renderOffers(
+  offers
+) {
+
+  const box =
+    findFirstElement([
+
+      "offers",
+
+      "offersList",
+
+      "offerList",
+
+      "activeOffers",
+
+      "activeOffersList"
+
+    ]);
+
+
+  if (!box) {
+
+    return;
+
+  }
+
+
+  const now =
+    Date.now();
+
+
+  const activeOffers =
+    offers.filter(
+      offer => {
+
+        if (
+          offer.active === false
+        ) {
+
+          return false;
+
+        }
+
+
+        if (
+          offer.enabled === false
+        ) {
+
+          return false;
+
+        }
+
+
+        const expiresAt =
+          getTimestampMs(
+            offer.expiresAt ||
+            offer.endAt ||
+            offer.validUntil
+          );
+
+
+        if (
+          Number.isFinite(
+            expiresAt
+          )
+          &&
+          expiresAt <
+            now
+        ) {
+
+          return false;
+
+        }
+
+
+        return true;
+
+      }
+    );
+
+
+  if (!activeOffers.length) {
+
+    box.innerHTML =
+      '<div class="empty">No active offers available.</div>';
+
+    return;
+
+  }
+
+
+  box.innerHTML =
+    activeOffers.map(
+      offer => {
+
+        const title =
+          offer.title ||
+          offer.name ||
+          "Special Offer";
+
+
+        const description =
+          offer.description ||
+          offer.details ||
+          "";
+
+
+        const discount =
+          offer.discount ||
+          offer.discountPercent ||
+          "";
+
+
+        return `
+
+          <div
+            class="offer-card"
+            style="
+              padding:14px;
+              margin-bottom:10px;
+            "
+          >
+
+            <div
+              style="
+                font-size:16px;
+                font-weight:800;
+              "
+            >
+
+              ${escapeHtml(
+                title
+              )}
+
+            </div>
+
+
+            ${
+              description
+
+                ? `
+
+                  <div
+                    style="
+                      margin-top:6px;
+                      opacity:.8;
+                    "
+                  >
+
+                    ${escapeHtml(
+                      description
+                    )}
+
+                  </div>
+
+                `
+
+                : ""
+
+            }
+
+
+            ${
+              discount
+
+                ? `
+
+                  <div
+                    style="
+                      margin-top:8px;
+                      font-weight:800;
+                    "
+                  >
+
+                    ${escapeHtml(
+                      String(
+                        discount
+                      )
+                    )}
+
+                    ${
+                      Number(
+                        discount
+                      )
+                        ? "% OFF"
+                        : ""
+                    }
+
+                  </div>
+
+                `
+
+                : ""
+
+            }
+
+          </div>
+
+        `;
+
+      }
+    ).join("");
+
+}
+
+
+/* =========================================================
+   REFERRAL
+========================================================= */
+
+async function loadReferralData() {
+
+  if (!currentUser?.uid) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const userRef =
+      doc(
+        db,
+        "users",
+        currentUser.uid
+      );
+
+
+    const userSnap =
+      await getDoc(
+        userRef
+      );
+
+
+    if (!userSnap.exists()) {
+
+      return;
+
+    }
+
+
+    const user =
+      userSnap.data();
+
+
+    const referralCode =
+
+      user.referralCode ||
+
+      user.refCode ||
+
+      user.referral_code ||
+
+      user.code ||
+
+      "";
+
+
+    const referralCount =
+
+      Number(
+
+        user.referralCount ||
+
+        user.referrals ||
+
+        user.referralUsers ||
+
+        0
+
+      );
+
+
+    const referralEarnings =
+
+      Number(
+
+        user.referralEarnings ||
+
+        user.referralIncome ||
+
+        user.referralProfit ||
+
+        0
+
+      );
+
+
+    setTextIfExists(
+      "referralCode",
+      referralCode || "N/A"
+    );
+
+
+    setTextIfExists(
+      "refCode",
+      referralCode || "N/A"
+    );
+
+
+    setTextIfExists(
+      "referralCount",
+      String(referralCount)
+    );
+
+
+    setTextIfExists(
+      "referrals",
+      String(referralCount)
+    );
+
+
+    setTextIfExists(
+      "referralEarnings",
+      money(referralEarnings)
+    );
+
+
+    setTextIfExists(
+      "referralIncome",
+      money(referralEarnings)
+    );
+
+
+    /*
+     * Optional referral link.
+     */
+
+    const referralLink =
+      location.origin +
+      location.pathname +
+      "?ref=" +
+      encodeURIComponent(
+        referralCode
+      );
+
+
+    const linkElements =
+      document.querySelectorAll(
+        "[data-referral-link]"
+      );
+
+
+    linkElements.forEach(
+      element => {
+
+        if (
+          "value" in element
+        ) {
+
+          element.value =
+            referralLink;
+
+        } else {
+
+          element.textContent =
+            referralLink;
+
+        }
+
+      }
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "Referral loading error:",
+      error
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   COPY REFERRAL CODE
+========================================================= */
+
+async function copyReferralCode() {
+
+  const codeElement =
+    findFirstElement([
+
+      "referralCode",
+
+      "refCode"
+
+    ]);
+
+
+  const code =
+    codeElement?.textContent ||
+    currentUserData?.referralCode ||
+    currentUserData?.refCode ||
+    "";
+
+
+  if (!code || code === "N/A") {
+
+    return;
+
+  }
+
+
+  try {
+
+    await navigator.clipboard.writeText(
+      code.trim()
+    );
+
+
+    showMessage(
+      "Referral code copied.",
+      true
+    );
+
+
+  } catch {
+
+    showMessage(
+      "Could not copy referral code."
+    );
+
+  }
+
+}
+
+
+$("copyReferral")?.addEventListener(
+  "click",
+  copyReferralCode
+);
+
+
+$("copyReferralCode")?.addEventListener(
+  "click",
+  copyReferralCode
+);
+
+
+/* =========================================================
+   FIND ELEMENT
+========================================================= */
+
+function findFirstElement(
+  ids
+) {
+
+  for (
+    const id of ids
+  ) {
+
+    const element =
+      $(id);
+
+    if (element) {
+
+      return element;
+
+    }
+
+  }
+
+
+  return null;
+
+}
+
+
+/* =========================================================
+   COLLECTION ERROR
+========================================================= */
+
+function showCollectionError(
+  collectionName,
+  error
+) {
+
+  console.error(
+    `${collectionName} loading failed:`,
+    error
+  );
+
+}
+
+
+/* =========================================================
+   OPEN TRADE
 ========================================================= */
 
 async function openTrade(
@@ -1257,14 +2080,6 @@ async function openTrade(
       CONFIG.maxAmount
     );
 
-
-  /*
-   * Minimum:
-   * ₹100
-   *
-   * Maximum:
-   * ₹500
-   */
 
   if (
 
@@ -1328,11 +2143,8 @@ async function openTrade(
 
 
     showMessage(
-
       "Opening demo trade...",
-
       true
-
     );
 
 
@@ -1344,8 +2156,9 @@ async function openTrade(
         {
 
           side:
-            String(side)
-              .toUpperCase(),
+            String(
+              side
+            ).toUpperCase(),
 
           amount:
             cleanAmount
@@ -1385,7 +2198,6 @@ async function openTrade(
         const msg =
           $("tradeMsg");
 
-
         if (msg) {
 
           msg.textContent =
@@ -1401,11 +2213,8 @@ async function openTrade(
   } catch (error) {
 
     console.error(
-
       "Open trade error:",
-
       error
-
     );
 
 
@@ -1441,7 +2250,7 @@ async function openTrade(
 
 
 /* =========================================================
-   BUY BUTTON
+   BUY
 ========================================================= */
 
 $("buy")?.addEventListener(
@@ -1460,7 +2269,7 @@ $("buy")?.addEventListener(
 
 
 /* =========================================================
-   SELL BUTTON
+   SELL
 ========================================================= */
 
 $("sell")?.addEventListener(
@@ -1502,11 +2311,8 @@ $("logout")?.addEventListener(
     } catch (error) {
 
       console.error(
-
         "Logout error:",
-
         error
-
       );
 
     }
@@ -1546,11 +2352,8 @@ onAuthStateChanged(
     } catch (error) {
 
       console.error(
-
         "Page initialization error:",
-
         error
-
       );
 
 
@@ -1597,6 +2400,15 @@ window.addEventListener(
     ) {
 
       unsubscribeTrades();
+
+    }
+
+
+    if (
+      unsubscribeOffers
+    ) {
+
+      unsubscribeOffers();
 
     }
 

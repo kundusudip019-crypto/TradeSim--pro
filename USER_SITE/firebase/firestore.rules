@@ -1,41 +1,39 @@
 rules_version = '2';
 
 service cloud.firestore {
+
   match /databases/{database}/documents {
 
-
-    // =========================================================
-    // HELPERS
-    // =========================================================
+    /* =====================================================
+       HELPER FUNCTIONS
+    ===================================================== */
 
     function signedIn() {
       return request.auth != null;
     }
-
 
     function isOwner(userId) {
       return signedIn()
         && request.auth.uid == userId;
     }
 
-
     function isAdmin() {
       return signedIn()
-        && request.auth.token.email
-          == "kundusudip019@gmail.com";
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() ==
+           "kundusudip019@gmail.com";
     }
 
 
-    // =========================================================
-    // USERS
-    // =========================================================
+    /* =====================================================
+       USERS
+    ===================================================== */
 
     match /users/{userId} {
 
       /*
        * User can read only their own account.
        */
-
       allow read:
         if isOwner(userId)
         || isAdmin();
@@ -44,18 +42,24 @@ service cloud.firestore {
       /*
        * IMPORTANT:
        *
-       * Normal client cannot directly modify balance.
+       * Client MUST NOT directly change balance.
        *
-       * Balance changes are performed by
-       * Firebase Admin SDK on the server.
+       * Balance is changed by server.js
+       * using Firebase Admin SDK.
        */
-
       allow create:
         if isOwner(userId);
 
 
       allow update:
-        if isAdmin();
+        if isAdmin()
+        ||
+        (
+          isOwner(userId)
+          &&
+          request.resource.data.balance ==
+          resource.data.balance
+        );
 
 
       allow delete:
@@ -64,47 +68,46 @@ service cloud.firestore {
     }
 
 
-    // =========================================================
-    // TRADES
-    // =========================================================
+    /* =====================================================
+       TRADES
+    ===================================================== */
 
     match /trades/{tradeId} {
 
       /*
-       * User can see their own trades.
+       * User can see only their own trades.
        */
-
       allow read:
         if signedIn()
-        && resource.data.userId
-          == request.auth.uid
-        || isAdmin();
+        &&
+        (
+          resource.data.userId ==
+          request.auth.uid
+          ||
+          isAdmin()
+        );
 
 
       /*
        * IMPORTANT:
        *
-       * Trade creation is handled by
-       * the secure server endpoint:
+       * Client cannot create trades directly.
        *
-       * POST /api/trade/open
-       *
-       * Firebase Admin SDK bypasses these rules.
-       *
-       * Therefore browser/client cannot create
-       * fake trades or manipulate balance.
+       * server.js creates trades using
+       * Firebase Admin SDK.
        */
-
       allow create:
         if false;
 
 
       /*
-       * Trade settlement is also server-side.
+       * Client cannot modify trade result,
+       * profit, status, amount, etc.
+       *
+       * server.js handles settlement.
        */
-
       allow update:
-        if isAdmin();
+        if false;
 
 
       allow delete:
@@ -113,34 +116,37 @@ service cloud.firestore {
     }
 
 
-    // =========================================================
-    // WALLET TRANSACTIONS
-    // =========================================================
+    /* =====================================================
+       WALLET TRANSACTIONS
+    ===================================================== */
 
     match /walletTransactions/{transactionId} {
 
       /*
-       * User can read their own wallet history.
+       * User can view their own wallet history.
        */
-
       allow read:
         if signedIn()
-        && resource.data.userId
-          == request.auth.uid
-        || isAdmin();
+        &&
+        (
+          resource.data.userId ==
+          request.auth.uid
+          ||
+          isAdmin()
+        );
 
 
       /*
-       * Wallet transaction records are created
-       * by the secure backend.
+       * Client cannot create fake wallet transactions.
+       *
+       * server.js creates these.
        */
-
       allow create:
         if false;
 
 
       allow update:
-        if isAdmin();
+        if false;
 
 
       allow delete:
@@ -149,36 +155,41 @@ service cloud.firestore {
     }
 
 
-    // =========================================================
-    // TOP-UP REQUESTS
-    // =========================================================
+    /* =====================================================
+       TOPUP REQUESTS
+    ===================================================== */
 
     match /topupRequests/{requestId} {
 
       /*
-       * User can see only their own requests.
+       * User can create their own top-up request.
        */
+      allow create:
+        if signedIn()
+        &&
+        request.resource.data.userId ==
+        request.auth.uid;
 
+
+      /*
+       * User can see only their own requests.
+       * Admin can see all.
+       */
       allow read:
         if signedIn()
-        && resource.data.userId
-          == request.auth.uid
-        || isAdmin();
+        &&
+        (
+          resource.data.userId ==
+          request.auth.uid
+          ||
+          isAdmin()
+        );
 
 
       /*
-       * Top-up request creation should happen
-       * through the secure payment server.
+       * User cannot approve/reject/change
+       * their own payment request.
        */
-
-      allow create:
-        if false;
-
-
-      /*
-       * Admin handles approval/rejection.
-       */
-
       allow update:
         if isAdmin();
 
@@ -189,36 +200,40 @@ service cloud.firestore {
     }
 
 
-    // =========================================================
-    // WITHDRAWAL REQUESTS
-    // =========================================================
+    /* =====================================================
+       WITHDRAWAL REQUESTS
+    ===================================================== */
 
     match /withdrawalRequests/{requestId} {
 
       /*
-       * User can see only their own withdrawal requests.
+       * User can create their own withdrawal request.
        */
+      allow create:
+        if signedIn()
+        &&
+        request.resource.data.userId ==
+        request.auth.uid;
 
+
+      /*
+       * User can see their own requests.
+       * Admin can see all.
+       */
       allow read:
         if signedIn()
-        && resource.data.userId
-          == request.auth.uid
-        || isAdmin();
+        &&
+        (
+          resource.data.userId ==
+          request.auth.uid
+          ||
+          isAdmin()
+        );
 
 
       /*
-       * Withdrawal request creation happens
-       * through the secure server.
+       * Only admin can change request status.
        */
-
-      allow create:
-        if false;
-
-
-      /*
-       * Admin handles approval/rejection.
-       */
-
       allow update:
         if isAdmin();
 
@@ -229,109 +244,167 @@ service cloud.firestore {
     }
 
 
-    // =========================================================
-    // PRODUCTS
-    // =========================================================
+    /* =====================================================
+       PRODUCTS
+    ===================================================== */
 
     match /products/{productId} {
 
       /*
-       * Products can be viewed by logged-in users.
+       * Logged-in users can view products.
        */
-
       allow read:
         if signedIn();
 
 
       /*
-       * Only admin can manage products.
+       * Only admin can create/edit/delete products.
        */
-
-      allow create:
-        if isAdmin();
-
-      allow update:
-        if isAdmin();
-
-      allow delete:
+      allow create, update, delete:
         if isAdmin();
 
     }
 
 
-    // =========================================================
-    // ORDERS
-    // =========================================================
+    /* =====================================================
+       OFFERS
+    ===================================================== */
 
-    match /orders/{orderId} {
+    match /offers/{offerId} {
 
       /*
-       * User can read their own orders.
+       * Logged-in users can view offers.
        */
-
       allow read:
-        if signedIn()
-        && resource.data.userId
-          == request.auth.uid
-        || isAdmin();
+        if signedIn();
 
 
       /*
-       * Orders should not be used to modify
-       * wallet balance.
+       * Only admin can manage offers.
        */
-
-      allow create:
-        if signedIn()
-        && request.resource.data.userId
-          == request.auth.uid;
-
-
-      allow update:
-        if isAdmin();
-
-
-      allow delete:
+      allow create, update, delete:
         if isAdmin();
 
     }
 
 
-    // =========================================================
-    // BALANCE TRANSACTIONS
-    // =========================================================
+    /* =====================================================
+       REFERRALS
+    ===================================================== */
 
-    match /balanceTransactions/{transactionId} {
+    match /referrals/{referralId} {
 
+      /*
+       * User can read their own referral record.
+       */
       allow read:
         if signedIn()
-        && resource.data.userId
-          == request.auth.uid
-        || isAdmin();
+        &&
+        (
+          resource.data.userId ==
+          request.auth.uid
+          ||
+          resource.data.referrerId ==
+          request.auth.uid
+          ||
+          isAdmin()
+        );
 
 
       /*
-       * Balance changes must happen through
-       * trusted backend/Admin SDK.
+       * Client cannot create fake referral records.
        */
-
       allow create:
         if false;
 
 
-      allow update:
-        if isAdmin();
-
-
-      allow delete:
+      /*
+       * Only admin can modify referral records.
+       */
+      allow update, delete:
         if isAdmin();
 
     }
 
 
-    // =========================================================
-    // DEFAULT DENY
-    // =========================================================
+    /* =====================================================
+       ORDERS
+    ===================================================== */
+
+    match /orders/{orderId} {
+
+      allow read:
+        if signedIn()
+        &&
+        (
+          resource.data.userId ==
+          request.auth.uid
+          ||
+          resource.data.customerEmail ==
+          request.auth.token.email
+          ||
+          isAdmin()
+        );
+
+
+      allow create:
+        if signedIn()
+        &&
+        request.resource.data.userId ==
+        request.auth.uid;
+
+
+      allow update, delete:
+        if isAdmin();
+
+    }
+
+
+    /* =====================================================
+       CUSTOMERS
+    ===================================================== */
+
+    match /customers/{customerId} {
+
+      allow read:
+        if isAdmin();
+
+
+      allow create:
+        if signedIn();
+
+
+      allow update, delete:
+        if isAdmin();
+
+    }
+
+
+    /* =====================================================
+       USERS / ADMIN SETTINGS
+    ===================================================== */
+
+    match /settings/{settingId} {
+
+      /*
+       * Logged-in users can read website settings.
+       */
+      allow read:
+        if signedIn();
+
+
+      /*
+       * Only admin can change settings.
+       */
+      allow create, update, delete:
+        if isAdmin();
+
+    }
+
+
+    /* =====================================================
+       DEFAULT DENY
+    ===================================================== */
 
     match /{document=**} {
 
