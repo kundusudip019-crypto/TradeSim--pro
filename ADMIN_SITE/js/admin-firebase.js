@@ -1,3 +1,8 @@
+// ============================================================
+// TradeSim Pro - Admin Page
+// Firebase Admin Dashboard + Payment Approval
+// ============================================================
+
 import { auth, db } from "./firebase.js";
 
 import {
@@ -19,87 +24,291 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 
-/* =========================================================
-   CONFIG
-========================================================= */
+// ============================================================
+// CONFIG
+// ============================================================
 
 const ADMIN_EMAIL =
   "kundusudip019@gmail.com";
 
-/*
- * Render deployment will be done at the end.
- *
- * Keep localhost for now.
- */
 const PAYMENT_SERVER_URL =
-  "http://localhost:10000";
-
+  "https://tradesim-pro.onrender.com";
 
 const MIN_WITHDRAWAL = 50;
 const MIN_REMAINING_BALANCE = 100;
 
-const $ =
-  id => document.getElementById(id);
+const $ = id =>
+  document.getElementById(id);
 
 
-/* =========================================================
-   DEFAULT TRADING SETTINGS
-========================================================= */
+// ============================================================
+// DEFAULT SETTINGS
+// ============================================================
 
 const DEFAULTS = {
 
   min: 100,
-
   max: 500,
 
   tradeHours: 200,
 
   userProfitMin: 10,
-
   userProfitMax: 50,
 
   platformProfitMin: 5,
-
   platformProfitMax: 10
 
 };
 
 
-/* =========================================================
-   AUTH
-========================================================= */
+// ============================================================
+// HELPERS
+// ============================================================
+
+function escapeHtml(value) {
+
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+}
+
+
+function getDateMs(value) {
+
+  if (!value) {
+    return 0;
+  }
+
+  if (
+    typeof value.toMillis === "function"
+  ) {
+
+    return value.toMillis();
+
+  }
+
+  if (
+    value instanceof Date
+  ) {
+
+    return value.getTime();
+
+  }
+
+  const parsed =
+    new Date(value).getTime();
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
+
+}
+
+
+function formatDate(value) {
+
+  const ms =
+    getDateMs(value);
+
+  if (!ms) {
+    return "Processing...";
+  }
+
+  return new Date(ms)
+    .toLocaleString();
+
+}
+
+
+function showMessage(
+  element,
+  text,
+  success = false
+) {
+
+  if (!element) {
+    return;
+  }
+
+  element.textContent =
+    text;
+
+  element.className =
+    success
+      ? "msg ok"
+      : "msg";
+
+}
+
+
+async function parseJson(response) {
+
+  try {
+
+    return await response.json();
+
+  } catch {
+
+    return null;
+
+  }
+
+}
+
+
+// ============================================================
+// AUTH
+// ============================================================
 
 onAuthStateChanged(
   auth,
-  user => {
+  async user => {
 
-    if (
-      !user ||
-      user.email !== ADMIN_EMAIL
-    ) {
+    if (!user) {
 
       location.href =
         "login.html";
 
       return;
+
     }
 
 
-    loadUsers();
+    const email =
+      String(
+        user.email || ""
+      )
+        .trim()
+        .toLowerCase();
 
-    loadTrades();
 
-    loadSettings();
+    if (
+      email !==
+      ADMIN_EMAIL.toLowerCase()
+    ) {
 
-    loadRequests();
+      await signOut(auth);
+
+      location.href =
+        "login.html";
+
+      return;
+
+    }
+
+
+    try {
+
+      const userSnap =
+        await getDoc(
+          doc(
+            db,
+            "users",
+            user.uid
+          )
+        );
+
+
+      if (
+        userSnap.exists() &&
+        userSnap.data().active === false
+      ) {
+
+        await signOut(auth);
+
+        location.href =
+          "login.html";
+
+        return;
+
+      }
+
+
+      loadUsers();
+
+      loadTrades();
+
+      loadSettings();
+
+      loadRequests();
+
+      testPaymentServer();
+
+    } catch (error) {
+
+      console.error(
+        "Admin initialization error:",
+        error
+      );
+
+    }
 
   }
 );
 
 
-/* =========================================================
-   SETTINGS
-========================================================= */
+// ============================================================
+// PAYMENT SERVER TEST
+// ============================================================
+
+async function testPaymentServer() {
+
+  try {
+
+    const response =
+      await fetch(
+        PAYMENT_SERVER_URL + "/",
+        {
+          method: "GET",
+          cache: "no-store"
+        }
+      );
+
+
+    const result =
+      await parseJson(
+        response
+      );
+
+
+    if (
+      response.ok &&
+      result?.ok
+    ) {
+
+      console.log(
+        "✅ Payment server connected:",
+        result
+      );
+
+    } else {
+
+      console.warn(
+        "⚠️ Payment server returned:",
+        result
+      );
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "❌ Payment server connection error:",
+      error
+    );
+
+  }
+
+}
+
+
+// ============================================================
+// SETTINGS
+// ============================================================
 
 async function loadSettings() {
 
@@ -129,8 +338,7 @@ async function loadSettings() {
       "userProfitMax",
       "platformProfitMin",
       "platformProfitMax"
-    ]
-    .forEach(
+    ].forEach(
       key => {
 
         if ($(key)) {
@@ -157,9 +365,9 @@ async function loadSettings() {
 }
 
 
-/* =========================================================
-   SAVE SETTINGS
-========================================================= */
+// ============================================================
+// SAVE SETTINGS
+// ============================================================
 
 $("saveSettings")?.addEventListener(
   "click",
@@ -255,7 +463,7 @@ $("saveSettings")?.addEventListener(
       showMessage(
         $("settingsMsg"),
         error.message ||
-          "Could not save settings.",
+        "Could not save settings.",
         false
       );
 
@@ -265,9 +473,9 @@ $("saveSettings")?.addEventListener(
 );
 
 
-/* =========================================================
-   OFFERS
-========================================================= */
+// ============================================================
+// OFFERS
+// ============================================================
 
 $("addOffer")?.addEventListener(
   "click",
@@ -310,7 +518,8 @@ $("addOffer")?.addEventListener(
           createdAt:
             serverTimestamp(),
 
-          active: true
+          active:
+            true
 
         }
       );
@@ -344,7 +553,7 @@ $("addOffer")?.addEventListener(
       showMessage(
         $("offerMsg"),
         error.message ||
-          "Could not create offer.",
+        "Could not create offer.",
         false
       );
 
@@ -354,9 +563,9 @@ $("addOffer")?.addEventListener(
 );
 
 
-/* =========================================================
-   USERS
-========================================================= */
+// ============================================================
+// USERS
+// ============================================================
 
 function loadUsers() {
 
@@ -379,7 +588,8 @@ function loadUsers() {
         snapshot.docs.map(
           d => ({
 
-            id: d.id,
+            id:
+              d.id,
 
             ...d.data()
 
@@ -431,9 +641,7 @@ function loadUsers() {
 
 
       if (!table) {
-
         return;
-
       }
 
 
@@ -489,9 +697,7 @@ function loadUsers() {
                   <td>
 
                     <b>
-
                       ₹${balance.toFixed(2)}
-
                     </b>
 
                   </td>
@@ -511,9 +717,7 @@ function loadUsers() {
 
                     ${
                       user.active === false
-
                         ? "🔴 Inactive"
-
                         : "🟢 Active"
                     }
 
@@ -527,13 +731,9 @@ function loadUsers() {
                     )}
 
                     (
-
-                    ${
-                      Number(
-                        user.referralCount || 0
-                      )
-                    }
-
+                    ${Number(
+                      user.referralCount || 0
+                    )}
                     )
 
                   </td>
@@ -581,9 +781,7 @@ function loadUsers() {
           <tr>
 
             <td colspan="7">
-
               No users found.
-
             </td>
 
           </tr>
@@ -594,9 +792,7 @@ function loadUsers() {
 
 
       document
-        .querySelectorAll(
-          ".toggle"
-        )
+        .querySelectorAll(".toggle")
         .forEach(
           button => {
 
@@ -604,9 +800,7 @@ function loadUsers() {
               () =>
                 toggleUser(
                   button.dataset.uid,
-
-                  button.dataset.active ===
-                    "true"
+                  button.dataset.active === "true"
                 );
 
           }
@@ -628,9 +822,9 @@ function loadUsers() {
 }
 
 
-/* =========================================================
-   TOGGLE USER
-========================================================= */
+// ============================================================
+// TOGGLE USER
+// ============================================================
 
 async function toggleUser(
   uid,
@@ -646,10 +840,8 @@ async function toggleUser(
         uid
       ),
       {
-
         active:
           !currentlyActive
-
       }
     );
 
@@ -666,9 +858,9 @@ async function toggleUser(
 }
 
 
-/* =========================================================
-   TRADES
-========================================================= */
+// ============================================================
+// TRADES
+// ============================================================
 
 function loadTrades() {
 
@@ -704,12 +896,10 @@ function loadTrades() {
       const volume =
         trades.reduce(
           (total, trade) =>
-
             total +
             Number(
               trade.amount || 0
             ),
-
           0
         );
 
@@ -717,12 +907,10 @@ function loadTrades() {
       const platformProfit =
         trades.reduce(
           (total, trade) =>
-
             total +
             Number(
               trade.platformProfit || 0
             ),
-
           0
         );
 
@@ -750,9 +938,7 @@ function loadTrades() {
 
 
       if (!table) {
-
         return;
-
       }
 
 
@@ -841,9 +1027,7 @@ function loadTrades() {
           <tr>
 
             <td colspan="7">
-
               No trades found.
-
             </td>
 
           </tr>
@@ -868,9 +1052,9 @@ function loadTrades() {
 }
 
 
-/* =========================================================
-   LOAD TOP-UP + WITHDRAWAL REQUESTS
-========================================================= */
+// ============================================================
+// LOAD PAYMENT REQUESTS
+// ============================================================
 
 function loadRequests() {
 
@@ -902,6 +1086,7 @@ function loadRequests() {
 
   onSnapshot(
     topupQuery,
+
     snapshot => {
 
       renderRequests(
@@ -910,6 +1095,7 @@ function loadRequests() {
       );
 
     },
+
     error => {
 
       console.error(
@@ -923,6 +1109,7 @@ function loadRequests() {
 
   onSnapshot(
     withdrawalQuery,
+
     snapshot => {
 
       renderRequests(
@@ -931,6 +1118,7 @@ function loadRequests() {
       );
 
     },
+
     error => {
 
       console.error(
@@ -944,9 +1132,9 @@ function loadRequests() {
 }
 
 
-/* =========================================================
-   RENDER REQUESTS
-========================================================= */
+// ============================================================
+// RENDER REQUESTS
+// ============================================================
 
 function renderRequests(
   type,
@@ -966,9 +1154,7 @@ function renderRequests(
 
 
   if (!table) {
-
     return;
-
   }
 
 
@@ -976,7 +1162,8 @@ function renderRequests(
     snapshot.docs.map(
       item => ({
 
-        id: item.id,
+        id:
+          item.id,
 
         ...item.data()
 
@@ -992,7 +1179,7 @@ function renderRequests(
           const status =
             String(
               request.status ||
-                "PENDING"
+              "PENDING"
             ).toUpperCase();
 
 
@@ -1003,7 +1190,8 @@ function renderRequests(
 
 
           const userId =
-            request.userId || "-";
+            request.userId ||
+            "-";
 
 
           const createdAt =
@@ -1013,8 +1201,7 @@ function renderRequests(
 
 
           const pending =
-            status ===
-            "PENDING";
+            status === "PENDING";
 
 
           return `
@@ -1024,9 +1211,8 @@ function renderRequests(
               <td>
 
                 ${escapeHtml(
-                  String(
-                    userId
-                  ).slice(0, 8)
+                  String(userId)
+                    .slice(0, 8)
                 )}
 
               </td>
@@ -1088,9 +1274,7 @@ function renderRequests(
                         )}"
 
                       >
-
                         Approve
-
                       </button>
 
 
@@ -1107,15 +1291,12 @@ function renderRequests(
                         )}"
 
                       >
-
                         Reject
-
                       </button>
 
                     `
 
                     : "Processed"
-
                 }
 
               </td>
@@ -1136,9 +1317,7 @@ function renderRequests(
       <tr>
 
         <td colspan="6">
-
           No requests found.
-
         </td>
 
       </tr>
@@ -1157,8 +1336,9 @@ function renderRequests(
 
         button.onclick =
           () =>
-            approveRequest(
-              button
+            processRequest(
+              button,
+              "APPROVED"
             );
 
       }
@@ -1174,8 +1354,9 @@ function renderRequests(
 
         button.onclick =
           () =>
-            rejectRequest(
-              button
+            processRequest(
+              button,
+              "REJECTED"
             );
 
       }
@@ -1184,13 +1365,14 @@ function renderRequests(
 }
 
 
-/* =========================================================
-   APPROVE REQUEST
-   SERVER-SIDE ONLY
-========================================================= */
+// ============================================================
+// APPROVE / REJECT REQUEST
+// SERVER SIDE
+// ============================================================
 
-async function approveRequest(
-  button
+async function processRequest(
+  button,
+  status
 ) {
 
   const collectionName =
@@ -1242,172 +1424,29 @@ async function approveRequest(
     }
 
 
-    const idToken =
-      await user.getIdToken(
-        true
-      );
-
-
-    const type =
-      collectionName ===
-      "withdrawalRequests"
-
-        ? "withdrawal"
-
-        : "topup";
-
-
-    const response =
-      await fetch(
-
-        PAYMENT_SERVER_URL +
-        "/api/admin/request-status",
-
-        {
-
-          method:
-            "POST",
-
-          headers: {
-
-            "Content-Type":
-              "application/json",
-
-            "Authorization":
-              "Bearer " +
-              idToken
-
-          },
-
-          body:
-            JSON.stringify({
-
-              requestId,
-
-              type,
-
-              status:
-                "APPROVED"
-
-            })
-
-        }
-
-      );
-
-
-    const result =
-      await parseJson(
-        response
-      );
+    const email =
+      String(
+        user.email || ""
+      )
+        .trim()
+        .toLowerCase();
 
 
     if (
-      !response.ok ||
-      !result?.ok
+      email !==
+      ADMIN_EMAIL.toLowerCase()
     ) {
 
       throw new Error(
-        result?.message ||
-        "Approval failed."
+        "Admin access denied."
       );
 
     }
 
 
-    showMessage(
-      output,
-      "Request approved successfully.",
-      true
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      "Approve request error:",
-      error
-    );
-
-
-    showMessage(
-      output,
-      error.message ||
-        "Approval failed.",
-      false
-    );
-
-
-  } finally {
-
-    button.disabled =
-      false;
-
-    button.textContent =
-      "Approve";
-
-  }
-
-}
-
-
-/* =========================================================
-   REJECT REQUEST
-   SERVER-SIDE ONLY
-========================================================= */
-
-async function rejectRequest(
-  button
-) {
-
-  const collectionName =
-    button.dataset.c;
-
-  const requestId =
-    button.dataset.id;
-
-
-  const output =
-    $("requestMsg");
-
-
-  if (
-    !requestId ||
-    !collectionName
-  ) {
-
-    showMessage(
-      output,
-      "Invalid request.",
-      false
-    );
-
-    return;
-
-  }
-
-
-  try {
-
-    button.disabled =
-      true;
-
-    button.textContent =
-      "Processing...";
-
-
-    const user =
-      auth.currentUser;
-
-
-    if (!user) {
-
-      throw new Error(
-        "Admin authentication required."
-      );
-
-    }
-
+    /*
+     * Get a fresh Firebase ID token.
+     */
 
     const idToken =
       await user.getIdToken(
@@ -1453,8 +1492,7 @@ async function rejectRequest(
 
               type,
 
-              status:
-                "REJECTED"
+              status
 
             })
 
@@ -1476,7 +1514,7 @@ async function rejectRequest(
 
       throw new Error(
         result?.message ||
-        "Rejection failed."
+        `Request failed (${response.status}).`
       );
 
     }
@@ -1484,23 +1522,35 @@ async function rejectRequest(
 
     showMessage(
       output,
-      "Request rejected successfully.",
+
+      status === "APPROVED"
+        ? "Request approved successfully."
+        : "Request rejected successfully.",
+
       true
+    );
+
+
+    console.log(
+      "Admin request update:",
+      result
     );
 
 
   } catch (error) {
 
     console.error(
-      "Reject request error:",
+      "Request processing error:",
       error
     );
 
 
     showMessage(
       output,
+
       error.message ||
-        "Reject failed.",
+      "Could not process request.",
+
       false
     );
 
@@ -1511,18 +1561,20 @@ async function rejectRequest(
       false;
 
     button.textContent =
-      "Reject";
+      status === "APPROVED"
+        ? "Approve"
+        : "Reject";
 
   }
 
 }
 
 
-/* =========================================================
-   LOGOUT
-========================================================= */
+// ============================================================
+// LOGOUT
+// ============================================================
 
-$("adminLogout")?.addEventListener(
+$("logout")?.addEventListener(
   "click",
   async () => {
 
@@ -1531,7 +1583,6 @@ $("adminLogout")?.addEventListener(
       await signOut(
         auth
       );
-
 
       location.href =
         "login.html";
@@ -1548,150 +1599,3 @@ $("adminLogout")?.addEventListener(
 
   }
 );
-
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-async function parseJson(
-  response
-) {
-
-  try {
-
-    return await response.json();
-
-  } catch {
-
-    return null;
-
-  }
-
-}
-
-
-function formatDate(
-  value
-) {
-
-  if (!value) {
-
-    return "-";
-
-  }
-
-
-  try {
-
-    if (
-      typeof value.toDate ===
-      "function"
-    ) {
-
-      return value
-        .toDate()
-        .toLocaleString();
-
-    }
-
-
-    if (
-      typeof value.toMillis ===
-      "function"
-    ) {
-
-      return new Date(
-        value.toMillis()
-      ).toLocaleString();
-
-    }
-
-
-    const date =
-      new Date(
-        value
-      );
-
-
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
-
-      return "-";
-
-    }
-
-
-    return date.toLocaleString();
-
-  } catch {
-
-    return "-";
-
-  }
-
-}
-
-
-function escapeHtml(
-  value
-) {
-
-  return String(
-    value ?? ""
-  )
-
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
-
-}
-
-
-function showMessage(
-  element,
-  text,
-  success
-) {
-
-  if (!element) {
-
-    return;
-
-  }
-
-
-  element.textContent =
-    text;
-
-
-  element.className =
-    success
-      ? "msg ok"
-      : "msg";
-
-}
