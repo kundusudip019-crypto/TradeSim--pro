@@ -2479,18 +2479,59 @@ async function settleTrade(
 
 
 /* ============================================================
-   AUTOMATIC SETTLEMENT WORKER
+   AUTOMATIC TRADE SETTLEMENT WORKER
 ============================================================ */
+
+let settlementRunning = false;
+
 
 async function settleExpiredTrades() {
 
+  if (!db) {
+    console.error(
+      "Settlement skipped: Firebase DB not available."
+    );
+    return;
+  }
+
+
+  if (settlementRunning) {
+    return;
+  }
+
+
+  settlementRunning = true;
+
+
   try {
 
-    if (!db) {
+    /*
+     * IMPORTANT:
+     *
+     * Only query by status.
+     *
+     * Do NOT use:
+     *
+     * where("status", "==", "OPEN")
+     * where("settleAt", "<=", now)
+     *
+     * together, because that can require
+     * a Firestore composite index.
+     */
 
-      console.error(
-        "Settlement skipped: Firebase is not configured."
-      );
+    const snapshot =
+      await db
+        .collection("trades")
+        .where(
+          "status",
+          "==",
+          "OPEN"
+        )
+        .limit(100)
+        .get();
+
+
+    if (snapshot.empty) {
 
       return;
 
@@ -2498,45 +2539,86 @@ async function settleExpiredTrades() {
 
 
     const now =
-      admin.firestore
-        .Timestamp
-        .now();
-
-
-    const snapshot =
-      await db
-        .collection(
-          "trades"
-        )
-        .where(
-          "status",
-          "==",
-          "OPEN"
-        )
-        .where(
-          "settleAt",
-          "<=",
-          now
-        )
-        .limit(50)
-        .get();
-
-
-    if (
-      snapshot.empty
-    ) {
-
-      return;
-
-    }
+      Date.now();
 
 
     for (
-      const tradeDoc
-      of snapshot.docs
+      const tradeDoc of snapshot.docs
     ) {
 
       try {
+
+        const trade =
+          tradeDoc.data();
+
+
+        /*
+         * Get settlement timestamp.
+         */
+
+        let settleAtMs =
+          0;
+
+
+        if (
+          trade.settleAt &&
+          typeof trade.settleAt.toMillis ===
+          "function"
+        ) {
+
+          settleAtMs =
+            trade.settleAt.toMillis();
+
+        } else if (
+          trade.settleAt
+        ) {
+
+          settleAtMs =
+            new Date(
+              trade.settleAt
+            ).getTime();
+
+        }
+
+
+        /*
+         * Invalid settlement time.
+         */
+
+        if (
+          !Number.isFinite(
+            settleAtMs
+          ) ||
+          settleAtMs <= 0
+        ) {
+
+          console.error(
+            "Invalid settleAt:",
+            tradeDoc.id
+          );
+
+          continue;
+
+        }
+
+
+        /*
+         * Not expired yet.
+         */
+
+        if (
+          settleAtMs > now
+        ) {
+
+          continue;
+
+        }
+
+
+        /*
+         * Trade has expired.
+         * Settle it.
+         */
 
         await settleTrade(
           tradeDoc.id
@@ -2544,7 +2626,7 @@ async function settleExpiredTrades() {
 
 
         console.log(
-          "Trade settled:",
+          "✅ Trade settled:",
           tradeDoc.id
         );
 
@@ -2552,13 +2634,9 @@ async function settleExpiredTrades() {
       } catch (error) {
 
         console.error(
-
-          "Settlement failed:",
-
+          "❌ Settlement failed:",
           tradeDoc.id,
-
           error.message
-
         );
 
       }
@@ -2569,9 +2647,15 @@ async function settleExpiredTrades() {
   } catch (error) {
 
     console.error(
-      "Settlement worker error:",
+      "❌ Settlement worker error:",
       error
     );
+
+
+  } finally {
+
+    settlementRunning =
+      false;
 
   }
 
@@ -2579,71 +2663,44 @@ async function settleExpiredTrades() {
 
 
 /* ============================================================
-   CHECK EVERY 10 SECONDS
+   RUN SETTLEMENT EVERY 5 SECONDS
 ============================================================ */
 
 setInterval(
-  settleExpiredTrades,
-  10000
+  () => {
+
+    settleExpiredTrades()
+      .catch(error => {
+
+        console.error(
+          "Settlement interval error:",
+          error
+        );
+
+      });
+
+  },
+  5000
 );
 
 
 /*
- * Also run once when server starts.
+ * Run once immediately when server starts.
  */
 
 setTimeout(
-  settleExpiredTrades,
-  3000
-);
-
-
-// ============================================================
-// GLOBAL ERROR HANDLER
-// ============================================================
-
-app.use(
-  (error, req, res, next) => {
-
-    console.error(
-      "Server error:",
-      error
-    );
-
-
-    const message =
-      error?.message ||
-      "Request failed.";
-
-
-    res.status(400).json({
-
-      ok: false,
-
-      message
-
-    });
-
-  }
-);
-
-
-// ============================================================
-// START SERVER
-// ============================================================
-
-app.listen(
-  PORT,
-  "0.0.0.0",
   () => {
 
-    console.log(
-      `TradeSim payment server running on port ${PORT}`
-    );
+    settleExpiredTrades()
+      .catch(error => {
 
-    console.log(
-      `Admin email: ${ADMIN_EMAIL}`
-    );
+        console.error(
+          "Initial settlement error:",
+          error
+        );
 
-  }
+      });
+
+  },
+  3000
 );
