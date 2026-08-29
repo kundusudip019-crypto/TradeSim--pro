@@ -30,14 +30,25 @@ import {
 ========================================================= */
 
 const CONFIG = window.TRADE_CONFIG || {
-  sessionDurationMs: 5 * 60 * 1000,
-  sessionMinutes: 5,
 
-  minAmount: 100,
-  maxAmount: 500,
+  sessionDurationMs:
+    5 * 60 * 1000,
 
-  minWinRate: 22,
-  maxWinRate: 90
+  sessionMinutes:
+    5,
+
+  minAmount:
+    100,
+
+  maxAmount:
+    500,
+
+  minWinRate:
+    22,
+
+  maxWinRate:
+    90
+
 };
 
 
@@ -50,11 +61,20 @@ const TRADE_SERVER_URL =
 
 
 /* =========================================================
+   GLOBAL TIMER
+========================================================= */
+
+let tradeTimerInterval =
+  null;
+
+
+/* =========================================================
    HELPERS
 ========================================================= */
 
-const $ = id =>
-  document.getElementById(id);
+const $ =
+  id =>
+    document.getElementById(id);
 
 
 function money(value) {
@@ -73,11 +93,26 @@ function money(value) {
 function escapeHtml(value) {
 
   return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+    .replaceAll(
+      "'",
+      "&#039;"
+    );
 
 }
 
@@ -85,7 +120,9 @@ function escapeHtml(value) {
 function formatDate(value) {
 
   if (!value) {
+
     return "Processing...";
+
   }
 
 
@@ -103,18 +140,60 @@ function formatDate(value) {
   } else {
 
     ms =
-      new Date(value).getTime();
+      new Date(value)
+        .getTime();
 
   }
 
 
   if (!ms) {
+
     return "Processing...";
+
   }
 
 
   return new Date(ms)
     .toLocaleString();
+
+}
+
+
+function getTimestampMs(value) {
+
+  if (!value) {
+
+    return NaN;
+
+  }
+
+
+  if (
+    typeof value.toMillis ===
+    "function"
+  ) {
+
+    return value.toMillis();
+
+  }
+
+
+  if (
+    typeof value ===
+    "number"
+  ) {
+
+    return value;
+
+  }
+
+
+  const parsed =
+    new Date(value)
+      .getTime();
+
+
+  return parsed;
 
 }
 
@@ -129,7 +208,9 @@ function showMessage(
 
 
   if (!el) {
+
     return;
+
   }
 
 
@@ -248,9 +329,13 @@ async function tradeServerRequest(
   if (!response.ok) {
 
     console.error(
+
       "Trade server response:",
+
       response.status,
+
       data
+
     );
 
 
@@ -340,7 +425,9 @@ async function loadUser(user) {
 function updateUserUI() {
 
   if (!currentUserData) {
+
     return;
+
   }
 
 
@@ -399,7 +486,9 @@ function updateUserUI() {
 function startUserListener() {
 
   if (!currentUser?.uid) {
+
     return;
+
   }
 
 
@@ -448,8 +537,11 @@ function startUserListener() {
       error => {
 
         console.error(
+
           "User listener error:",
+
           error
+
         );
 
       }
@@ -466,7 +558,9 @@ function startUserListener() {
 function startTradeListener() {
 
   if (!currentUser?.uid) {
+
     return;
+
   }
 
 
@@ -523,14 +617,18 @@ function startTradeListener() {
           (a, b) => {
 
             const aTime =
-              a.createdAt
-                ?.toMillis?.() ||
+              a.createdAt?.toMillis?.() ||
+              getTimestampMs(
+                a.createdAt
+              ) ||
               0;
 
 
             const bTime =
-              b.createdAt
-                ?.toMillis?.() ||
+              b.createdAt?.toMillis?.() ||
+              getTimestampMs(
+                b.createdAt
+              ) ||
               0;
 
 
@@ -562,8 +660,11 @@ function startTradeListener() {
       error => {
 
         console.error(
+
           "Trade listener error:",
+
           error
+
         );
 
       }
@@ -632,6 +733,161 @@ function updateStats(
 
 
 /* =========================================================
+   FORMAT COUNTDOWN
+========================================================= */
+
+function formatCountdown(
+  milliseconds
+) {
+
+  const totalSeconds =
+    Math.max(
+      0,
+      Math.ceil(
+        milliseconds / 1000
+      )
+    );
+
+
+  const minutes =
+    Math.floor(
+      totalSeconds / 60
+    );
+
+
+  const seconds =
+    totalSeconds % 60;
+
+
+  return (
+
+    String(minutes)
+      .padStart(2, "0")
+
+    +
+
+    ":" +
+
+    String(seconds)
+      .padStart(2, "0")
+
+  );
+
+}
+
+
+/* =========================================================
+   START TRADE COUNTDOWN
+========================================================= */
+
+function startTradeCountdown() {
+
+  if (tradeTimerInterval) {
+
+    clearInterval(
+      tradeTimerInterval
+    );
+
+    tradeTimerInterval =
+      null;
+
+  }
+
+
+  function updateTimers() {
+
+    const timerElements =
+      document.querySelectorAll(
+        ".trade-countdown"
+      );
+
+
+    if (
+      !timerElements.length
+    ) {
+
+      return;
+
+    }
+
+
+    const now =
+      Date.now();
+
+
+    timerElements.forEach(
+      timer => {
+
+        const settleAt =
+          Number(
+            timer.dataset.settleAt
+          );
+
+
+        if (
+          !Number.isFinite(
+            settleAt
+          )
+        ) {
+
+          timer.textContent =
+            "05:00";
+
+          return;
+
+        }
+
+
+        const remaining =
+          settleAt -
+          now;
+
+
+        if (
+          remaining <= 0
+        ) {
+
+          timer.textContent =
+            "Settling...";
+
+          timer.classList.add(
+            "settling"
+          );
+
+          return;
+
+        }
+
+
+        timer.classList.remove(
+          "settling"
+        );
+
+
+        timer.textContent =
+          formatCountdown(
+            remaining
+          );
+
+      }
+    );
+
+  }
+
+
+  updateTimers();
+
+
+  tradeTimerInterval =
+    setInterval(
+      updateTimers,
+      1000
+    );
+
+}
+
+
+/* =========================================================
    DASHBOARD OPEN TRADES
 ========================================================= */
 
@@ -644,7 +900,9 @@ function renderDashboardTrades(
 
 
   if (!box) {
+
     return;
+
   }
 
 
@@ -665,6 +923,21 @@ function renderDashboardTrades(
     box.innerHTML =
       '<div class="empty">No open trades.</div>';
 
+
+    if (
+      tradeTimerInterval
+    ) {
+
+      clearInterval(
+        tradeTimerInterval
+      );
+
+      tradeTimerInterval =
+        null;
+
+    }
+
+
     return;
 
   }
@@ -679,18 +952,36 @@ function renderDashboardTrades(
             String(
               trade.side ||
               ""
-            ).toUpperCase();
+            )
+            .toUpperCase();
+
+
+          const settleAt =
+            getTimestampMs(
+              trade.settleAt
+            );
 
 
           return `
 
-            <div class="request-row">
+            <div
+              class="request-row"
+              data-trade-id="${escapeHtml(
+                trade.id
+              )}"
+            >
 
-              <div class="request-main">
+              <div
+                class="request-main"
+              >
 
-                <div class="request-title">
+                <div
+                  class="request-title"
+                >
 
-                  ${escapeHtml(side)}
+                  ${escapeHtml(
+                    side
+                  )}
 
                   •
 
@@ -703,7 +994,9 @@ function renderDashboardTrades(
                 </div>
 
 
-                <div class="request-meta">
+                <div
+                  class="request-meta"
+                >
 
                   ${escapeHtml(
                     formatDate(
@@ -711,20 +1004,47 @@ function renderDashboardTrades(
                     )
                   )}
 
-                  <br>
-
-                  Result after
-                  ${CONFIG.sessionMinutes}
-                  minutes
-
                 </div>
 
               </div>
 
 
-              <div class="request-amount">
+              <div
+                class="request-amount"
+                style="
+                  text-align:right;
+                  min-width:90px;
+                "
+              >
 
-                OPEN
+                <div
+                  class="trade-countdown"
+                  data-settle-at="${settleAt}"
+                  style="
+                    font-size:18px;
+                    font-weight:800;
+                    line-height:1.2;
+                  "
+                >
+                  ${formatCountdown(
+                    Math.max(
+                      0,
+                      settleAt -
+                      Date.now()
+                    )
+                  )}
+                </div>
+
+
+                <div
+                  style="
+                    font-size:11px;
+                    opacity:.75;
+                    margin-top:3px;
+                  "
+                >
+                  OPEN
+                </div>
 
               </div>
 
@@ -735,6 +1055,9 @@ function renderDashboardTrades(
         }
       )
       .join("");
+
+
+  startTradeCountdown();
 
 }
 
@@ -752,11 +1075,15 @@ function renderTradesPage(
 
 
   if (!box) {
+
     return;
+
   }
 
 
-  if (!trades.length) {
+  if (
+    !trades.length
+  ) {
 
     box.innerHTML =
       '<div class="empty">No trades yet.</div>';
@@ -775,14 +1102,16 @@ function renderTradesPage(
             String(
               trade.side ||
               ""
-            ).toUpperCase();
+            )
+            .toUpperCase();
 
 
           const status =
             String(
               trade.status ||
               "OPEN"
-            ).toUpperCase();
+            )
+            .toUpperCase();
 
 
           const profit =
@@ -819,13 +1148,21 @@ function renderTradesPage(
 
           return `
 
-            <div class="request-row">
+            <div
+              class="request-row"
+            >
 
-              <div class="request-main">
+              <div
+                class="request-main"
+              >
 
-                <div class="request-title">
+                <div
+                  class="request-title"
+                >
 
-                  ${escapeHtml(side)}
+                  ${escapeHtml(
+                    side
+                  )}
 
                   •
 
@@ -838,9 +1175,13 @@ function renderTradesPage(
                 </div>
 
 
-                <div class="request-meta">
+                <div
+                  class="request-meta"
+                >
 
-                  ${escapeHtml(status)}
+                  ${escapeHtml(
+                    status
+                  )}
 
                   <br>
 
@@ -855,7 +1196,9 @@ function renderTradesPage(
               </div>
 
 
-              <div class="request-amount">
+              <div
+                class="request-amount"
+              >
 
                 ${escapeHtml(
                   resultText
@@ -875,7 +1218,7 @@ function renderTradesPage(
 
 
 /* =========================================================
-   OPEN TRADE
+   OPEN DEMO TRADE
 ========================================================= */
 
 async function openTrade(
@@ -916,14 +1259,29 @@ async function openTrade(
 
 
   /*
-   * Minimum = ₹100
-   * Maximum = ₹500
+   * Minimum:
+   * ₹100
+   *
+   * Maximum:
+   * ₹500
    */
 
   if (
-    !Number.isFinite(amount) ||
-    amount < minAmount ||
-    amount > maxAmount
+
+    !Number.isFinite(
+      amount
+    )
+
+    ||
+
+    amount <
+      minAmount
+
+    ||
+
+    amount >
+      maxAmount
+
   ) {
 
     showMessage(
@@ -970,19 +1328,13 @@ async function openTrade(
 
 
     showMessage(
+
       "Opening demo trade...",
+
       true
+
     );
 
-
-    /*
-     * Server does:
-     *
-     * 1. Verify Firebase user
-     * 2. Check balance
-     * 3. Deduct trade amount
-     * 4. Create OPEN trade
-     */
 
     const result =
       await tradeServerRequest(
@@ -1027,11 +1379,6 @@ async function openTrade(
     );
 
 
-    /*
-     * Firestore onSnapshot()
-     * automatically updates balance.
-     */
-
     setTimeout(
       () => {
 
@@ -1054,8 +1401,11 @@ async function openTrade(
   } catch (error) {
 
     console.error(
+
       "Open trade error:",
+
       error
+
     );
 
 
@@ -1152,8 +1502,11 @@ $("logout")?.addEventListener(
     } catch (error) {
 
       console.error(
+
         "Logout error:",
+
         error
+
       );
 
     }
@@ -1193,8 +1546,11 @@ onAuthStateChanged(
     } catch (error) {
 
       console.error(
+
         "Page initialization error:",
+
         error
+
       );
 
 
@@ -1241,6 +1597,17 @@ window.addEventListener(
     ) {
 
       unsubscribeTrades();
+
+    }
+
+
+    if (
+      tradeTimerInterval
+    ) {
+
+      clearInterval(
+        tradeTimerInterval
+      );
 
     }
 
