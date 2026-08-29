@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="manifest" href="manifest.json">
+  <title>TradeSim Pro</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">TradeSim <span>PRO</span></div>
+    <nav><a href="#features">Features</a><a href="login.html">Login</a><a class="btn" href="register.html">Get Started</a></nav>
+  </header>
+  <main class="hero">
+    <section>
+      <div class="badge">SIMULATION MODE • NO REAL MONEY</div>
+      <h1>Practice trading.<br><span>Build confidence.</span></h1>
+      <p>A professional trading simulator with demo balance, live-looking charts, Buy/Sell orders, P/L, referrals and an admin console.</p>
+      <div class="actions"><a class="btn" href="register.html">Create Demo Account</a><a class="btn ghost" href="login.html">Sign In</a></div>
+    </section>
+    <div class="hero-card">
+      <div class="mini-head"><b>BTC/USDT</b><span class="up">+2.84%</span></div>
+      <canvas id="heroChart"></canvas>
+      <div class="price">$68,420.35</div>
+    </div>
+  </main>
+  <section id="features" class="features">
+    <div><b>📈</b><h3>Realistic Charts</h3><p>Animated market-style candles for demo practice.</p></div>
+    <div><b>💼</b><h3>Demo Trading</h3><p>Trade with virtual funds from ₹100 to ₹500 per order.</p></div>
+    <div><b>🛡️</b><h3>Admin Control</h3><p>Manage users, offers, settings and trade history.</p></div>
+  </section>
+  <script src="js/trade-config.js"></script>
+<script src="js/app.js"></script>
+  <script src="js/chart.js"></script>
+</body>
+</html>

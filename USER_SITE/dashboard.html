@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Dashboard • TradeSim Pro</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <style>
+    /* Dashboard chart fallback sizing */
+    .chart {
+      display: block;
+      width: 100%;
+      height: 330px;
+      min-height: 250px;
+    }
+
+    .market {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+      gap: 18px;
+    }
+
+    .market .card {
+      min-width: 0;
+    }
+
+    .tradeBox {
+      margin-top: 18px;
+    }
+
+    .tradeBox input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .actions .btn {
+      flex: 1;
+    }
+
+    .msg {
+      margin-top: 12px;
+      min-height: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .market {
+        grid-template-columns: 1fr;
+      }
+
+      .chart {
+        height: 280px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .chart {
+        height: 240px;
+      }
+
+      .actions {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- =========================
+       TOP HEADER
+  ========================== -->
+  <header class="top">
+
+    <a class="brand" href="dashboard.html">
+      TradeSim <span>PRO</span>
+    </a>
+
+    <div class="walletTop">
+      <small>Virtual Wallet</small>
+      <b id="topBalance">₹0.00</b>
+    </div>
+
+  </header>
+
+
+  <!-- =========================
+       MAIN LAYOUT
+  ========================== -->
+  <div class="layout">
+
+    <!-- =========================
+         SIDEBAR
+    ========================== -->
+    <aside>
+
+      <a href="dashboard.html">
+        📊 Dashboard
+      </a>
+
+      <a href="trades.html">
+        📈 Trades
+      </a>
+
+      <a href="wallet.html">
+        💳 Wallet
+      </a>
+
+      <a href="history.html">
+        📜 History
+      </a>
+
+      <a href="offers.html">
+        🎁 Offers
+      </a>
+
+      <a href="referral.html">
+        🔗 Referral
+      </a>
+
+      <a href="settings.html">
+        ⚙️ Settings
+      </a>
+
+      <button id="logout" class="logout">
+        Logout
+      </button>
+
+    </aside>
+
+
+    <!-- =========================
+         CONTENT
+    ========================== -->
+    <main class="content">
+
+
+      <!-- PAGE HEADER -->
+      <div class="pageHead">
+
+        <div>
+          <div class="muted">
+            DEMO TRADING
+          </div>
+
+          <h1>
+            Welcome,
+            <span id="userName">Trader</span>
+          </h1>
+        </div>
+
+        <span class="pill">
+          VIRTUAL FUNDS
+        </span>
+
+      </div>
+
+
+      <!-- =========================
+           STATISTICS
+      ========================== -->
+      <div class="stats">
+
+        <div class="card stat">
+          <small>
+            Wallet Balance
+          </small>
+
+          <strong id="balance">
+            ₹0.00
+          </strong>
+        </div>
+
+
+        <div class="card stat">
+          <small>
+            Open Trades
+          </small>
+
+          <strong id="openCount">
+            0
+          </strong>
+        </div>
+
+
+        <div class="card stat">
+          <small>
+            Total P/L
+          </small>
+
+          <strong id="pnl">
+            ₹0.00
+          </strong>
+        </div>
+
+
+        <div class="card stat">
+          <small>
+            Session
+          </small>
+
+          <strong>
+            5 min
+          </strong>
+        </div>
+
+      </div>
+
+
+      <!-- =========================
+           MARKET + TRADE
+      ========================== -->
+      <div class="market">
+
+
+        <!-- =========================
+             BTC CHART
+        ========================== -->
+        <section class="card">
+
+          <div class="pageHead">
+
+            <b>
+              BTC/USDT
+            </b>
+
+            <span id="marketPrice">
+              ₹68,420.35
+            </span>
+
+          </div>
+
+          <!-- Animated chart -->
+          <canvas
+            id="chart"
+            class="chart"
+            aria-label="BTC USDT demo trading chart">
+          </canvas>
+
+        </section>
+
+
+        <!-- =========================
+             OPEN TRADE
+        ========================== -->
+        <section class="card">
+
+          <h3>
+            Open Demo Trade
+          </h3>
+
+          <p class="muted">
+            Choose ₹100–₹500.
+            Result appears after 5 minutes.
+          </p>
+
+
+          <div class="tradeBox">
+
+            <input
+              id="amount"
+              type="number"
+              min="100"
+              max="500"
+              step="1"
+              value="100"
+              inputmode="numeric"
+              aria-label="Trade amount"
+            >
+
+
+            <div class="actions">
+
+              <button
+                id="buy"
+                class="btn buy"
+                type="button">
+                BUY
+              </button>
+
+
+              <button
+                id="sell"
+                class="btn sell"
+                type="button">
+                SELL
+              </button>
+
+            </div>
+
+
+            <div
+              id="tradeMsg"
+              class="msg"
+              aria-live="polite">
+            </div>
+
+          </div>
+
+        </section>
+
+      </div>
+
+
+      <!-- =========================
+           OPEN TRADES
+      ========================== -->
+      <section class="card">
+
+        <div class="pageHead">
+
+          <b>
+            Latest Open Trades
+          </b>
+
+          <a href="trades.html">
+            View all →
+          </a>
+
+        </div>
+
+
+        <div
+          id="openTrades"
+          class="list">
+
+          <div class="empty">
+            Loading...
+          </div>
+
+        </div>
+
+      </section>
+
+
+    </main>
+
+  </div>
+
+
+  <!-- =========================
+       JAVASCRIPT
+  ========================== -->
+
+  <!-- Trading configuration -->
+  <script src="js/trade-config.js"></script>
+
+  <!-- Animated BTC/USDT chart -->
+  <script src="js/chart.js"></script>
+
+  <!-- Firebase + dashboard/trading logic -->
+  <script
+    type="module"
+    src="js/page.js">
+  </script>
+
+</body>
+</html>
