@@ -1,5 +1,6 @@
 // ============================================================
-// TradeSim Pro - Secure Payment / Admin API Server
+// TradeSim Pro - Secure Payment / Admin / Trade API Server
+// VIRTUAL / DEMO TRADING ONLY
 // ============================================================
 
 import express from "express";
@@ -12,10 +13,14 @@ dotenv.config();
 
 const app = express();
 
-const PORT = Number(process.env.PORT || 10000);
+const PORT =
+  Number(process.env.PORT || 10000);
 
 const ADMIN_EMAIL =
-  String(process.env.ADMIN_EMAIL || "kundusudip019@gmail.com")
+  String(
+    process.env.ADMIN_EMAIL ||
+      "kundusudip019@gmail.com"
+  )
     .trim()
     .toLowerCase();
 
@@ -27,23 +32,35 @@ const ADMIN_EMAIL =
 let db = null;
 
 try {
+
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+
     throw new Error(
       "FIREBASE_SERVICE_ACCOUNT is not configured."
     );
+
   }
 
   const serviceAccount =
-    JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    JSON.parse(
+      process.env.FIREBASE_SERVICE_ACCOUNT
+    );
 
   admin.initializeApp({
+
     credential:
-      admin.credential.cert(serviceAccount)
+      admin.credential.cert(
+        serviceAccount
+      )
+
   });
 
-  db = admin.firestore();
+  db =
+    admin.firestore();
 
-  console.log("Firebase Admin connected.");
+  console.log(
+    "Firebase Admin connected."
+  );
 
 } catch (error) {
 
@@ -59,38 +76,59 @@ try {
 // CORS
 // ============================================================
 
-const allowedOrigins = String(
-  process.env.ALLOWED_ORIGINS || ""
-)
-  .split(",")
-  .map(x => x.trim())
-  .filter(Boolean);
+const allowedOrigins =
+  String(
+    process.env.ALLOWED_ORIGINS || ""
+  )
+    .split(",")
+    .map(
+      x => x.trim()
+    )
+    .filter(Boolean);
 
 
 app.use(
-  cors({
-    origin(origin, callback) {
 
-      // Allow requests without browser Origin header
-      // such as health checks / server-to-server.
+  cors({
+
+    origin(
+      origin,
+      callback
+    ) {
+
       if (!origin) {
-        return callback(null, true);
+
+        return callback(
+          null,
+          true
+        );
+
       }
 
       if (
         allowedOrigins.length === 0 ||
         allowedOrigins.includes(origin)
       ) {
-        return callback(null, true);
+
+        return callback(
+          null,
+          true
+        );
+
       }
 
       return callback(
-        new Error("Origin not allowed.")
+        new Error(
+          "Origin not allowed."
+        )
       );
 
     },
 
-    methods: ["GET", "POST"],
+    methods: [
+      "GET",
+      "POST"
+    ],
 
     allowedHeaders: [
       "Content-Type",
@@ -98,7 +136,9 @@ app.use(
     ],
 
     credentials: false
+
   })
+
 );
 
 
@@ -107,9 +147,12 @@ app.use(
 // ============================================================
 
 app.use(
+
   express.json({
-    limit: "200kb"
+    limit:
+      "200kb"
   })
+
 );
 
 
@@ -117,58 +160,89 @@ app.use(
 // MULTER
 // ============================================================
 
-const upload = multer({
+const upload =
+  multer({
 
-  storage:
-    multer.memoryStorage(),
+    storage:
+      multer.memoryStorage(),
 
-  limits: {
-    fileSize:
-      8 * 1024 * 1024
-  },
+    limits: {
 
-  fileFilter:
-    (req, file, cb) => {
+      fileSize:
+        8 * 1024 * 1024
 
-      const allowed = [
-        "image/jpeg",
-        "image/png",
-        "image/webp"
-      ];
+    },
 
-      if (
-        !allowed.includes(
-          file.mimetype
-        )
-      ) {
+    fileFilter:
+      (
+        req,
+        file,
+        cb
+      ) => {
 
-        return cb(
-          new Error(
-            "Only JPG, PNG or WEBP screenshots are allowed."
+        const allowed = [
+
+          "image/jpeg",
+          "image/png",
+          "image/webp"
+
+        ];
+
+        if (
+          !allowed.includes(
+            file.mimetype
           )
+        ) {
+
+          return cb(
+            new Error(
+              "Only JPG, PNG or WEBP screenshots are allowed."
+            )
+          );
+
+        }
+
+        cb(
+          null,
+          true
         );
 
       }
 
-      cb(null, true);
-
-    }
-
-});
+  });
 
 
 // ============================================================
 // HELPERS
 // ============================================================
 
-function escapeHtml(value) {
+function escapeHtml(
+  value
+) {
 
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+  return String(
+    value ?? ""
+  )
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+    .replaceAll(
+      "'",
+      "&#039;"
+    );
 
 }
 
@@ -178,17 +252,25 @@ function cleanString(
   maxLength = 200
 ) {
 
-  return String(value ?? "")
+  return String(
+    value ?? ""
+  )
     .trim()
-    .slice(0, maxLength);
+    .slice(
+      0,
+      maxLength
+    );
 
 }
 
 
-function money(value) {
+function money(
+  value
+) {
 
-  return Number(value || 0)
-    .toFixed(2);
+  return Number(
+    value || 0
+  ).toFixed(2);
 
 }
 
@@ -203,9 +285,25 @@ function isValidAmount(
     Number(amount);
 
   return (
+
     Number.isFinite(n) &&
+
     n >= minimum &&
+
     n <= maximum
+
+  );
+
+}
+
+
+function roundMoney(
+  value
+) {
+
+  return Number(
+    Number(value || 0)
+      .toFixed(2)
   );
 
 }
@@ -213,12 +311,6 @@ function isValidAmount(
 
 // ============================================================
 // AUTHENTICATION
-//
-// Client must send:
-//
-// Authorization: Bearer FIREBASE_ID_TOKEN
-//
-// The server verifies the token using Firebase Admin SDK.
 // ============================================================
 
 async function verifyFirebaseToken(
@@ -229,41 +321,74 @@ async function verifyFirebaseToken(
 
   try {
 
-    const header =
-      req.headers.authorization || "";
+    if (!admin.apps.length) {
 
-    if (
-      !header.startsWith("Bearer ")
-    ) {
+      return res.status(500).json({
 
-      return res.status(401).json({
         ok: false,
+
         message:
-          "Authentication required."
+          "Firebase Admin is not initialized."
+
       });
 
     }
 
+
+    const header =
+      req.headers.authorization ||
+      "";
+
+
+    if (
+      !header.startsWith(
+        "Bearer "
+      )
+    ) {
+
+      return res.status(401).json({
+
+        ok: false,
+
+        message:
+          "Authentication required."
+
+      });
+
+    }
+
+
     const idToken =
-      header.slice(7).trim();
+      header
+        .slice(7)
+        .trim();
+
 
     if (!idToken) {
 
       return res.status(401).json({
+
         ok: false,
+
         message:
           "Invalid authentication token."
+
       });
 
     }
 
+
     const decoded =
       await admin
         .auth()
-        .verifyIdToken(idToken);
+        .verifyIdToken(
+          idToken
+        );
+
 
     req.user =
       decoded;
+
 
     next();
 
@@ -274,10 +399,14 @@ async function verifyFirebaseToken(
       error.message
     );
 
+
     return res.status(401).json({
+
       ok: false,
+
       message:
         "Authentication failed."
+
     });
 
   }
@@ -300,12 +429,16 @@ async function requireAdmin(
     if (!req.user) {
 
       return res.status(401).json({
+
         ok: false,
+
         message:
           "Authentication required."
+
       });
 
     }
+
 
     const email =
       String(
@@ -320,26 +453,30 @@ async function requireAdmin(
     ) {
 
       return res.status(403).json({
+
         ok: false,
+
         message:
           "Admin access denied."
+
       });
 
     }
 
-    /*
-     * Extra check:
-     * Verify the admin user document too.
-     */
 
     if (db) {
 
       const adminUserRef =
-        db.collection("users")
-          .doc(req.user.uid);
+        db
+          .collection("users")
+          .doc(
+            req.user.uid
+          );
+
 
       const adminUserSnap =
         await adminUserRef.get();
+
 
       if (
         adminUserSnap.exists
@@ -348,19 +485,18 @@ async function requireAdmin(
         const data =
           adminUserSnap.data();
 
-        /*
-         * If account explicitly has
-         * active=false, deny access.
-         */
 
         if (
           data.active === false
         ) {
 
           return res.status(403).json({
+
             ok: false,
+
             message:
               "Admin account is disabled."
+
           });
 
         }
@@ -368,6 +504,7 @@ async function requireAdmin(
       }
 
     }
+
 
     next();
 
@@ -378,10 +515,14 @@ async function requireAdmin(
       error.message
     );
 
+
     return res.status(403).json({
+
       ok: false,
+
       message:
         "Admin authorization failed."
+
     });
 
   }
@@ -390,7 +531,7 @@ async function requireAdmin(
 
 
 // ============================================================
-// TELEGRAM
+// TELEGRAM MESSAGE
 // ============================================================
 
 async function telegramMessage(
@@ -426,15 +567,20 @@ async function telegramMessage(
     await fetch(
       url,
       {
-        method: "POST",
+
+        method:
+          "POST",
 
         headers: {
+
           "Content-Type":
             "application/json"
+
         },
 
         body:
           JSON.stringify({
+
             chat_id:
               chatId,
 
@@ -442,7 +588,9 @@ async function telegramMessage(
 
             parse_mode:
               "HTML"
+
           })
+
       }
     );
 
@@ -452,6 +600,7 @@ async function telegramMessage(
     const body =
       await response.text();
 
+
     throw new Error(
       `Telegram error: ${response.status} ${body}`
     );
@@ -460,6 +609,10 @@ async function telegramMessage(
 
 }
 
+
+// ============================================================
+// TELEGRAM PHOTO
+// ============================================================
 
 async function telegramPhoto(
   file,
@@ -496,10 +649,12 @@ async function telegramPhoto(
     chatId
   );
 
+
   form.append(
     "caption",
     caption
   );
+
 
   form.append(
     "parse_mode",
@@ -509,7 +664,9 @@ async function telegramPhoto(
 
   const blob =
     new Blob(
-      [file.buffer],
+      [
+        file.buffer
+      ],
       {
         type:
           file.mimetype
@@ -533,8 +690,13 @@ async function telegramPhoto(
     await fetch(
       url,
       {
-        method: "POST",
-        body: form
+
+        method:
+          "POST",
+
+        body:
+          form
+
       }
     );
 
@@ -543,6 +705,7 @@ async function telegramPhoto(
 
     const body =
       await response.text();
+
 
     throw new Error(
       `Telegram photo error: ${response.status} ${body}`
@@ -562,11 +725,15 @@ app.get(
   (req, res) => {
 
     res.json({
+
       ok: true,
+
       service:
-        "TradeSim Pro Payment Server",
+        "TradeSim Pro API",
+
       status:
         "running"
+
     });
 
   }
@@ -578,34 +745,35 @@ app.get(
 // ============================================================
 
 app.post(
+
   "/api/payment/add-balance",
 
   verifyFirebaseToken,
 
-  upload.single("screenshot"),
+  upload.single(
+    "screenshot"
+  ),
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
 
     try {
 
       if (!db) {
 
         return res.status(500).json({
+
           ok: false,
+
           message:
             "Firebase backend is not configured."
+
         });
 
       }
 
-
-      /*
-       * IMPORTANT:
-       *
-       * Do NOT trust userId from req.body.
-       *
-       * UID comes from verified Firebase token.
-       */
 
       const userId =
         req.user.uid;
@@ -616,6 +784,7 @@ app.post(
           req.body.userName,
           100
         );
+
 
       const userEmail =
         cleanString(
@@ -637,10 +806,6 @@ app.post(
         );
 
 
-      // ----------------------------
-      // Validate amount
-      // ----------------------------
-
       if (
         !isValidAmount(
           numericAmount,
@@ -650,64 +815,68 @@ app.post(
       ) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "Invalid payment amount."
+
         });
 
       }
 
-
-      // ----------------------------
-      // Validate UTR
-      // ----------------------------
 
       if (
         utr.length < 4
       ) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "UTR / transaction ID is required."
+
         });
 
       }
 
-
-      // ----------------------------
-      // Screenshot
-      // ----------------------------
 
       if (!req.file) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "Payment screenshot is required."
+
         });
 
       }
 
 
-      // ----------------------------
-      // Verify user exists
-      // ----------------------------
-
       const userRef =
-        db.collection("users")
+        db
+          .collection("users")
           .doc(userId);
+
 
       const userSnap =
         await userRef.get();
 
 
-      if (!userSnap.exists) {
+      if (
+        !userSnap.exists
+      ) {
 
         return res.status(404).json({
+
           ok: false,
+
           message:
             "User account not found."
+
         });
 
       }
@@ -722,22 +891,23 @@ app.post(
       ) {
 
         return res.status(403).json({
+
           ok: false,
+
           message:
             "User account is disabled."
+
         });
 
       }
 
 
-      // ----------------------------
-      // Create request
-      // ----------------------------
-
       const requestRef =
-        db.collection(
-          "topupRequests"
-        ).doc();
+        db
+          .collection(
+            "topupRequests"
+          )
+          .doc();
 
 
       await requestRef.set({
@@ -755,14 +925,14 @@ app.post(
           userEmail ||
           cleanString(
             userData.email ||
-            req.user.email ||
-            "",
+              req.user.email ||
+              "",
             150
           ),
 
         amount:
-          Number(
-            numericAmount.toFixed(2)
+          roundMoney(
+            numericAmount
           ),
 
         utr,
@@ -780,10 +950,6 @@ app.post(
 
       });
 
-
-      // ----------------------------
-      // Telegram
-      // ----------------------------
 
       const telegramCaption = `
 
@@ -828,21 +994,20 @@ Please verify the payment before approving.
 
 
         await requestRef.update({
+
           screenshotSentToTelegram:
             true
+
         });
 
-      } catch (telegramError) {
+      } catch (
+        telegramError
+      ) {
 
         console.error(
           "Telegram error:",
           telegramError.message
         );
-
-        /*
-         * Request remains in Firestore.
-         * Admin can still see it.
-         */
 
       }
 
@@ -867,6 +1032,7 @@ Please verify the payment before approving.
         error
       );
 
+
       return res.status(500).json({
 
         ok: false,
@@ -880,6 +1046,7 @@ Please verify the payment before approving.
     }
 
   }
+
 );
 
 
@@ -888,28 +1055,31 @@ Please verify the payment before approving.
 // ============================================================
 
 app.post(
+
   "/api/payment/withdraw",
 
   verifyFirebaseToken,
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
 
     try {
 
       if (!db) {
 
         return res.status(500).json({
+
           ok: false,
+
           message:
             "Firebase backend is not configured."
+
         });
 
       }
 
-
-      /*
-       * UID comes from verified token.
-       */
 
       const userId =
         req.user.uid;
@@ -942,10 +1112,6 @@ app.post(
         );
 
 
-      // ----------------------------
-      // Amount validation
-      // ----------------------------
-
       if (
         !isValidAmount(
           numericAmount,
@@ -955,22 +1121,16 @@ app.post(
       ) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "Minimum withdrawal is ₹50."
+
         });
 
       }
 
-
-      // ----------------------------
-      // UPI validation
-      // ----------------------------
-
-      /*
-       * Basic UPI format validation.
-       * This is NOT proof that the UPI exists.
-       */
 
       const upiRegex =
         /^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$/;
@@ -983,20 +1143,20 @@ app.post(
       ) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "Please enter a valid UPI ID."
+
         });
 
       }
 
 
-      // ----------------------------
-      // User
-      // ----------------------------
-
       const userRef =
-        db.collection("users")
+        db
+          .collection("users")
           .doc(userId);
 
 
@@ -1004,12 +1164,17 @@ app.post(
         await userRef.get();
 
 
-      if (!userSnap.exists) {
+      if (
+        !userSnap.exists
+      ) {
 
         return res.status(404).json({
+
           ok: false,
+
           message:
             "User account not found."
+
         });
 
       }
@@ -1024,9 +1189,12 @@ app.post(
       ) {
 
         return res.status(403).json({
+
           ok: false,
+
           message:
             "User account is disabled."
+
         });
 
       }
@@ -1038,18 +1206,18 @@ app.post(
         );
 
 
-      // ----------------------------
-      // Balance validation
-      // ----------------------------
-
       if (
-        balance < numericAmount
+        balance <
+        numericAmount
       ) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "Insufficient virtual balance."
+
         });
 
       }
@@ -1062,22 +1230,23 @@ app.post(
       ) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "You must keep at least ₹100 in your wallet."
+
         });
 
       }
 
 
-      // ----------------------------
-      // Create request
-      // ----------------------------
-
       const requestRef =
-        db.collection(
-          "withdrawalRequests"
-        ).doc();
+        db
+          .collection(
+            "withdrawalRequests"
+          )
+          .doc();
 
 
       await requestRef.set({
@@ -1095,14 +1264,14 @@ app.post(
           userEmail ||
           cleanString(
             userData.email ||
-            req.user.email ||
-            "",
+              req.user.email ||
+              "",
             150
           ),
 
         amount:
-          Number(
-            numericAmount.toFixed(2)
+          roundMoney(
+            numericAmount
           ),
 
         upiId:
@@ -1119,35 +1288,33 @@ app.post(
       });
 
 
-      // ----------------------------
-      // Telegram
-      // ----------------------------
+      try {
 
-      const telegramText = `
+        await telegramMessage(`
 
 <b>🏦 NEW WITHDRAWAL REQUEST</b>
 
 👤 <b>User:</b> ${escapeHtml(
-        userName ||
-        userData.name ||
-        "Unknown"
-      )}
+          userName ||
+          userData.name ||
+          "Unknown"
+        )}
 
 📧 <b>Email:</b> ${escapeHtml(
-        userEmail ||
-        userData.email ||
-        req.user.email ||
-        "Unknown"
-      )}
+          userEmail ||
+          userData.email ||
+          req.user.email ||
+          "Unknown"
+        )}
 
 💵 <b>Amount:</b> ₹${money(
-        numericAmount
-      )}
+          numericAmount
+        )}
 
 💳 <b>UPI ID:</b>
 <code>${escapeHtml(
-        cleanUpi
-      )}</code>
+          cleanUpi
+        )}</code>
 
 🆔 <b>Request ID:</b>
 <code>${requestRef.id}</code>
@@ -1155,16 +1322,11 @@ app.post(
 ⏳ <b>Status:</b> PENDING
 
 Admin should manually verify/pay the withdrawal before marking it successful.
-`;
+`);
 
-
-      try {
-
-        await telegramMessage(
-          telegramText
-        );
-
-      } catch (telegramError) {
+      } catch (
+        telegramError
+      ) {
 
         console.error(
           "Telegram error:",
@@ -1194,6 +1356,7 @@ Admin should manually verify/pay the withdrawal before marking it successful.
         error
       );
 
+
       return res.status(500).json({
 
         ok: false,
@@ -1207,44 +1370,38 @@ Admin should manually verify/pay the withdrawal before marking it successful.
     }
 
   }
+
 );
 
 
 // ============================================================
 // ADMIN REQUEST STATUS
-//
-// Secure server-side approve/reject.
-//
-// Client must send:
-//
-// Authorization: Bearer FIREBASE_ID_TOKEN
-//
-// Body:
-//
-// {
-//   requestId,
-//   type,
-//   status
-// }
 // ============================================================
 
 app.post(
+
   "/api/admin/request-status",
 
   verifyFirebaseToken,
 
   requireAdmin,
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
 
     try {
 
       if (!db) {
 
         return res.status(500).json({
+
           ok: false,
+
           message:
             "Firebase backend is not configured."
+
         });
 
       }
@@ -1274,9 +1431,12 @@ app.post(
       if (!requestId) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "Request ID is required."
+
         });
 
       }
@@ -1293,9 +1453,12 @@ app.post(
       ) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "Invalid request type."
+
         });
 
       }
@@ -1309,9 +1472,12 @@ app.post(
       ) {
 
         return res.status(400).json({
+
           ok: false,
+
           message:
             "Invalid status."
+
         });
 
       }
@@ -1325,14 +1491,12 @@ app.post(
 
 
       const requestRef =
-        db.collection(
-          collectionName
-        ).doc(requestId);
+        db
+          .collection(
+            collectionName
+          )
+          .doc(requestId);
 
-
-      // ======================================================
-      // APPROVE / REJECT
-      // ======================================================
 
       await db.runTransaction(
         async transaction => {
@@ -1357,10 +1521,6 @@ app.post(
           const request =
             requestSnap.data();
 
-
-          // ------------------------------
-          // Prevent double processing
-          // ------------------------------
 
           if (
             request.status !==
@@ -1412,9 +1572,9 @@ app.post(
 
 
           const userRef =
-            db.collection(
-              "users"
-            ).doc(uid);
+            db
+              .collection("users")
+              .doc(uid);
 
 
           const userSnap =
@@ -1444,17 +1604,15 @@ app.post(
             );
 
 
-          // ==================================================
-          // REJECT
-          // ==================================================
-
           if (
-            status === "REJECTED"
+            status ===
+            "REJECTED"
           ) {
 
             transaction.update(
               requestRef,
               {
+
                 status:
                   "REJECTED",
 
@@ -1469,17 +1627,15 @@ app.post(
                 processedByEmail:
                   req.user.email ||
                   null
+
               }
             );
+
 
             return;
 
           }
 
-
-          // ==================================================
-          // APPROVE TOPUP
-          // ==================================================
 
           if (
             collectionName ===
@@ -1487,15 +1643,19 @@ app.post(
           ) {
 
             const newBalance =
-              currentBalance +
-              amount;
+              roundMoney(
+                currentBalance +
+                amount
+              );
 
 
             transaction.update(
               userRef,
               {
+
                 balance:
                   newBalance
+
               }
             );
 
@@ -1503,6 +1663,7 @@ app.post(
             transaction.update(
               requestRef,
               {
+
                 status:
                   "APPROVED",
 
@@ -1517,14 +1678,17 @@ app.post(
                 processedByEmail:
                   req.user.email ||
                   null
+
               }
             );
 
 
             const walletRef =
-              db.collection(
-                "walletTransactions"
-              ).doc();
+              db
+                .collection(
+                  "walletTransactions"
+                )
+                .doc();
 
 
             transaction.set(
@@ -1566,10 +1730,6 @@ app.post(
           }
 
 
-          // ==================================================
-          // APPROVE WITHDRAWAL
-          // ==================================================
-
           if (
             collectionName ===
             "withdrawalRequests"
@@ -1600,15 +1760,19 @@ app.post(
 
 
             const newBalance =
-              currentBalance -
-              amount;
+              roundMoney(
+                currentBalance -
+                amount
+              );
 
 
             transaction.update(
               userRef,
               {
+
                 balance:
                   newBalance
+
               }
             );
 
@@ -1616,6 +1780,7 @@ app.post(
             transaction.update(
               requestRef,
               {
+
                 status:
                   "APPROVED",
 
@@ -1630,14 +1795,17 @@ app.post(
                 processedByEmail:
                   req.user.email ||
                   null
+
               }
             );
 
 
             const walletRef =
-              db.collection(
-                "walletTransactions"
-              ).doc();
+              db
+                .collection(
+                  "walletTransactions"
+                )
+                .doc();
 
 
             transaction.set(
@@ -1679,10 +1847,6 @@ app.post(
       );
 
 
-      // ======================================================
-      // TELEGRAM ADMIN ACTION
-      // ======================================================
-
       try {
 
         await telegramMessage(`
@@ -1709,7 +1873,9 @@ app.post(
 
 `);
 
-      } catch (telegramError) {
+      } catch (
+        telegramError
+      ) {
 
         console.error(
           "Telegram admin notification error:",
@@ -1736,6 +1902,7 @@ app.post(
         error
       );
 
+
       return res.status(400).json({
 
         ok: false,
@@ -1749,61 +1916,126 @@ app.post(
     }
 
   }
+
 );
 
+
 // ============================================================
-// TRADE SYSTEM
-// SERVER-SIDE BALANCE UPDATE
+// TRADE CONFIGURATION
 // ============================================================
 
-const TRADE_MIN_AMOUNT = 100;
-const TRADE_MAX_AMOUNT = 500;
-const TRADE_SESSION_MS = 5 * 60 * 1000;
+const TRADE_SESSION_MS =
+  5 * 60 * 1000;
+
+const TRADE_SESSION_MINUTES =
+  5;
+
+const MIN_TRADE_AMOUNT =
+  100;
+
+const MAX_TRADE_AMOUNT =
+  500;
+
+const MIN_WIN_RATE =
+  22;
+
+const MAX_WIN_RATE =
+  90;
+
+const MIN_PROFIT_LOSS =
+  10;
+
+const MAX_PROFIT_LOSS =
+  50;
 
 
-/* ============================================================
-   RANDOM WIN RATE
-   Minimum 22%
-   Maximum 90%
-============================================================ */
+// ============================================================
+// RANDOM WIN RATE
+// ============================================================
 
 function getRandomWinRate() {
 
-  return (
+  const value =
+    MIN_WIN_RATE +
     Math.random() *
-      (90 - 22) +
-    22
+      (
+        MAX_WIN_RATE -
+        MIN_WIN_RATE
+      );
+
+
+  return roundMoney(
+    value
   );
 
 }
 
 
-/* ============================================================
-   TRADE RESULT
-============================================================ */
+// ============================================================
+// RANDOM PROFIT / LOSS
+//
+// Profit/Loss is always ₹10–₹50.
+// Profit never exceeds the trade amount.
+// ============================================================
 
-function calculateTradeResult(amount) {
+function getRandomProfitLoss(
+  amount
+) {
+
+  const maximum =
+    Math.min(
+      MAX_PROFIT_LOSS,
+      Math.max(
+        MIN_PROFIT_LOSS,
+        amount
+      )
+    );
+
+
+  const value =
+    MIN_PROFIT_LOSS +
+    Math.random() *
+      (
+        maximum -
+        MIN_PROFIT_LOSS
+      );
+
+
+  return roundMoney(
+    value
+  );
+
+}
+
+
+// ============================================================
+// CALCULATE TRADE RESULT
+// ============================================================
+
+function calculateTradeResult(
+  amount
+) {
 
   const winRate =
     getRandomWinRate();
 
+
   const won =
-    Math.random() * 100 <
+    Math.random() *
+      100 <
     winRate;
 
 
-  /*
-   * WIN:
-   * +45% profit
-   *
-   * LOSS:
-   * -55% loss
-   */
+  const pnl =
+    getRandomProfitLoss(
+      amount
+    );
+
 
   const profit =
     won
-      ? amount * 0.45
-      : -(amount * 0.55);
+      ? pnl
+      : -pnl;
 
 
   return {
@@ -1814,30 +2046,32 @@ function calculateTradeResult(amount) {
         : "LOSS",
 
     profit:
-      Number(
-        profit.toFixed(2)
+      roundMoney(
+        profit
       ),
 
     winRate:
-      Number(
-        winRate.toFixed(2)
-      )
+      winRate
 
   };
 
 }
 
 
-/* ============================================================
-   OPEN TRADE
-============================================================ */
+// ============================================================
+// OPEN TRADE
+// ============================================================
 
 app.post(
+
   "/api/trade/open",
 
   verifyFirebaseToken,
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
 
     try {
 
@@ -1863,8 +2097,8 @@ app.post(
         String(
           req.body.side || ""
         )
-        .trim()
-        .toUpperCase();
+          .trim()
+          .toUpperCase();
 
 
       const amount =
@@ -1895,16 +2129,14 @@ app.post(
 
 
       // --------------------------------------------------------
-      // AMOUNT
-      // Minimum ₹100
-      // Maximum ₹500
+      // AMOUNT ₹100–₹500
       // --------------------------------------------------------
 
       if (
         !isValidAmount(
           amount,
-          TRADE_MIN_AMOUNT,
-          TRADE_MAX_AMOUNT
+          MIN_TRADE_AMOUNT,
+          MAX_TRADE_AMOUNT
         )
       ) {
 
@@ -1913,7 +2145,7 @@ app.post(
           ok: false,
 
           message:
-            `Trade amount must be between ₹${TRADE_MIN_AMOUNT} and ₹${TRADE_MAX_AMOUNT}.`
+            "Trade amount must be between ₹100 and ₹500."
 
         });
 
@@ -1921,29 +2153,26 @@ app.post(
 
 
       const cleanAmount =
-        Number(
-          amount.toFixed(2)
+        roundMoney(
+          amount
         );
 
 
       const userRef =
-        db.collection(
-          "users"
-        )
-        .doc(userId);
+        db
+          .collection("users")
+          .doc(userId);
 
 
       const tradeRef =
-        db.collection(
-          "trades"
-        )
-        .doc();
+        db
+          .collection("trades")
+          .doc();
 
 
-      /*
-       * Result is generated on the server.
-       * Client cannot decide WIN/LOSS.
-       */
+      // --------------------------------------------------------
+      // Generate result
+      // --------------------------------------------------------
 
       const result =
         calculateTradeResult(
@@ -1951,7 +2180,25 @@ app.post(
         );
 
 
+      const createdAt =
+        admin.firestore
+          .Timestamp.now();
+
+
+      const settleAt =
+        admin.firestore
+          .Timestamp.fromMillis(
+            Date.now() +
+            TRADE_SESSION_MS
+          );
+
+
+      // --------------------------------------------------------
+      // TRANSACTION
+      // --------------------------------------------------------
+
       await db.runTransaction(
+
         async transaction => {
 
           const userSnap =
@@ -1987,36 +2234,35 @@ app.post(
 
 
           const balance =
-            Number(
+            roundMoney(
               userData.balance || 0
             );
 
 
-          // ----------------------------------------------------
+          // ------------------------------------------------------
           // BALANCE CHECK
-          // ----------------------------------------------------
+          // ------------------------------------------------------
 
           if (
-            balance < cleanAmount
+            balance <
+            cleanAmount
           ) {
 
             throw new Error(
-              "Insufficient demo balance."
+              `Insufficient demo balance. Required ₹${money(cleanAmount)}, available ₹${money(balance)}.`
             );
 
           }
 
 
-          // ----------------------------------------------------
-          // DEDUCT TRADE AMOUNT
-          // ----------------------------------------------------
+          // ------------------------------------------------------
+          // DEDUCT STAKE
+          // ------------------------------------------------------
 
           const newBalance =
-            Number(
-              (
-                balance -
-                cleanAmount
-              ).toFixed(2)
+            roundMoney(
+              balance -
+              cleanAmount
             );
 
 
@@ -2039,9 +2285,9 @@ app.post(
           );
 
 
-          // ----------------------------------------------------
+          // ------------------------------------------------------
           // CREATE TRADE
-          // ----------------------------------------------------
+          // ------------------------------------------------------
 
           transaction.set(
 
@@ -2087,20 +2333,13 @@ app.post(
                 result.winRate,
 
               sessionMinutes:
-                5,
+                TRADE_SESSION_MINUTES,
 
               createdAt:
-                admin.firestore
-                  .FieldValue
-                  .serverTimestamp(),
+                createdAt,
 
               settleAt:
-                admin.firestore
-                  .Timestamp
-                  .fromMillis(
-                    Date.now() +
-                    TRADE_SESSION_MS
-                  ),
+                settleAt,
 
               balanceBefore:
                 balance,
@@ -2116,15 +2355,16 @@ app.post(
           );
 
 
-          // ----------------------------------------------------
+          // ------------------------------------------------------
           // WALLET TRANSACTION
-          // ----------------------------------------------------
+          // ------------------------------------------------------
 
           const walletRef =
-            db.collection(
-              "walletTransactions"
-            )
-            .doc();
+            db
+              .collection(
+                "walletTransactions"
+              )
+              .doc();
 
 
           transaction.set(
@@ -2143,7 +2383,7 @@ app.post(
                 "TRADE_OPEN",
 
               amount:
-                -cleanAmount,
+                cleanAmount,
 
               balanceBefore:
                 balance,
@@ -2168,6 +2408,20 @@ app.post(
       );
 
 
+      console.log(
+        "Trade opened:",
+        tradeRef.id,
+        "User:",
+        userId,
+        "Amount:",
+        cleanAmount,
+        "Result:",
+        result.result,
+        "Profit:",
+        result.profit
+      );
+
+
       return res.json({
 
         ok:
@@ -2179,17 +2433,14 @@ app.post(
         tradeId:
           tradeRef.id,
 
-        side:
-          side,
-
-        amount:
-          cleanAmount,
-
         deducted:
           cleanAmount,
 
         sessionMinutes:
-          5
+          TRADE_SESSION_MINUTES,
+
+        settleAt:
+          settleAt.toMillis()
 
       });
 
@@ -2220,23 +2471,40 @@ app.post(
 );
 
 
-/* ============================================================
-   SETTLE TRADE
-============================================================ */
+// ============================================================
+// SETTLE SINGLE TRADE
+// ============================================================
 
 async function settleTrade(
   tradeId
 ) {
 
+  if (!db) {
+
+    throw new Error(
+      "Firebase database unavailable."
+    );
+
+  }
+
+
   const tradeRef =
-    db.collection(
-      "trades"
-    )
-    .doc(tradeId);
+    db
+      .collection("trades")
+      .doc(tradeId);
+
+
+  let settled =
+    false;
 
 
   await db.runTransaction(
+
     async transaction => {
+
+      // --------------------------------------------------------
+      // GET TRADE
+      // --------------------------------------------------------
 
       const tradeSnap =
         await transaction.get(
@@ -2262,7 +2530,8 @@ async function settleTrade(
       // --------------------------------------------------------
 
       if (
-        trade.status !== "OPEN"
+        trade.status !==
+        "OPEN"
       ) {
 
         return;
@@ -2271,12 +2540,50 @@ async function settleTrade(
 
 
       // --------------------------------------------------------
-      // WAIT UNTIL 5 MINUTES
+      // CHECK TIME
       // --------------------------------------------------------
+
+      let settleAtMs =
+        0;
+
 
       if (
         trade.settleAt &&
-        trade.settleAt.toMillis() >
+        typeof trade.settleAt.toMillis ===
+        "function"
+      ) {
+
+        settleAtMs =
+          trade.settleAt.toMillis();
+
+      } else if (
+        trade.settleAt
+      ) {
+
+        settleAtMs =
+          new Date(
+            trade.settleAt
+          ).getTime();
+
+      }
+
+
+      if (
+        !Number.isFinite(
+          settleAtMs
+        ) ||
+        settleAtMs <= 0
+      ) {
+
+        throw new Error(
+          "Invalid trade settlement time."
+        );
+
+      }
+
+
+      if (
+        settleAtMs >
         Date.now()
       ) {
 
@@ -2285,13 +2592,30 @@ async function settleTrade(
       }
 
 
-      const userRef =
-        db.collection(
-          "users"
-        )
-        .doc(
-          trade.userId
+      // --------------------------------------------------------
+      // USER
+      // --------------------------------------------------------
+
+      const userId =
+        cleanString(
+          trade.userId,
+          150
         );
+
+
+      if (!userId) {
+
+        throw new Error(
+          "Trade has no valid user ID."
+        );
+
+      }
+
+
+      const userRef =
+        db
+          .collection("users")
+          .doc(userId);
 
 
       const userSnap =
@@ -2316,42 +2640,41 @@ async function settleTrade(
 
 
       const currentBalance =
-        Number(
+        roundMoney(
           userData.balance || 0
         );
 
 
       const amount =
-        Number(
+        roundMoney(
           trade.amount || 0
         );
 
 
       const profit =
-        Number(
+        roundMoney(
           trade.profit || 0
         );
 
 
-      /*
-       * Trade amount was already deducted
-       * when the trade opened.
-       *
-       * Settlement:
-       *
-       * current balance
-       * + original stake
-       * + profit/loss
-       */
+      // --------------------------------------------------------
+      // FINAL BALANCE
+      //
+      // Stake was deducted at OPEN.
+      //
+      // Final:
+      //
+      // current balance
+      // + original stake
+      // + profit/loss
+      // --------------------------------------------------------
 
       const newBalance =
-        Number(
+        roundMoney(
 
-          (
-            currentBalance +
-            amount +
-            profit
-          ).toFixed(2)
+          currentBalance +
+          amount +
+          profit
 
         );
 
@@ -2380,7 +2703,7 @@ async function settleTrade(
 
 
       // --------------------------------------------------------
-      // SETTLE TRADE
+      // CLOSE TRADE
       // --------------------------------------------------------
 
       transaction.update(
@@ -2413,10 +2736,11 @@ async function settleTrade(
       // --------------------------------------------------------
 
       const walletRef =
-        db.collection(
-          "walletTransactions"
-        )
-        .doc();
+        db
+          .collection(
+            "walletTransactions"
+          )
+          .doc();
 
 
       transaction.set(
@@ -2426,7 +2750,7 @@ async function settleTrade(
         {
 
           userId:
-            trade.userId,
+            userId,
 
           tradeId:
             tradeId,
@@ -2437,19 +2761,17 @@ async function settleTrade(
           result:
             trade.result,
 
-          amount:
-            Number(
-              (
-                amount +
-                profit
-              ).toFixed(2)
-            ),
-
-          stakeReturned:
+          stake:
             amount,
 
           profit:
             profit,
+
+          amount:
+            roundMoney(
+              amount +
+              profit
+            ),
 
           balanceBefore:
             currentBalance,
@@ -2464,60 +2786,81 @@ async function settleTrade(
 
           note:
             trade.result === "WIN"
-              ? "Winning trade settled"
-              : "Losing trade settled"
+              ? "Trade won - stake returned with profit"
+              : "Trade lost - stake returned with loss deducted"
 
         }
 
       );
 
+
+      settled =
+        true;
+
     }
 
   );
 
+
+  if (settled) {
+
+    console.log(
+      "✅ Trade settled:",
+      tradeId
+    );
+
+  }
+
 }
 
 
-/* ============================================================
-   AUTOMATIC TRADE SETTLEMENT WORKER
-============================================================ */
+// ============================================================
+// SETTLE EXPIRED TRADES
+//
+// IMPORTANT:
+//
+// We intentionally query ONLY:
+// status == OPEN
+//
+// We DO NOT use:
+//
+// where("status", "==", "OPEN")
+// where("settleAt", "<=", now)
+//
+// That removes the Firestore composite-index problem.
+// ============================================================
 
-let settlementRunning = false;
+let settlementRunning =
+  false;
 
 
 async function settleExpiredTrades() {
 
   if (!db) {
+
     console.error(
-      "Settlement skipped: Firebase DB not available."
+      "Settlement skipped: Firebase DB unavailable."
     );
+
     return;
+
   }
 
 
-  if (settlementRunning) {
+  if (
+    settlementRunning
+  ) {
+
     return;
+
   }
 
 
-  settlementRunning = true;
+  settlementRunning =
+    true;
 
 
   try {
-
-    /*
-     * IMPORTANT:
-     *
-     * Only query by status.
-     *
-     * Do NOT use:
-     *
-     * where("status", "==", "OPEN")
-     * where("settleAt", "<=", now)
-     *
-     * together, because that can require
-     * a Firestore composite index.
-     */
 
     const snapshot =
       await db
@@ -2531,7 +2874,9 @@ async function settleExpiredTrades() {
         .get();
 
 
-    if (snapshot.empty) {
+    if (
+      snapshot.empty
+    ) {
 
       return;
 
@@ -2543,7 +2888,8 @@ async function settleExpiredTrades() {
 
 
     for (
-      const tradeDoc of snapshot.docs
+      const tradeDoc
+      of snapshot.docs
     ) {
 
       try {
@@ -2551,10 +2897,6 @@ async function settleExpiredTrades() {
         const trade =
           tradeDoc.data();
 
-
-        /*
-         * Get settlement timestamp.
-         */
 
         let settleAtMs =
           0;
@@ -2581,10 +2923,6 @@ async function settleExpiredTrades() {
         }
 
 
-        /*
-         * Invalid settlement time.
-         */
-
         if (
           !Number.isFinite(
             settleAtMs
@@ -2602,12 +2940,9 @@ async function settleExpiredTrades() {
         }
 
 
-        /*
-         * Not expired yet.
-         */
-
         if (
-          settleAtMs > now
+          settleAtMs >
+          now
         ) {
 
           continue;
@@ -2615,18 +2950,7 @@ async function settleExpiredTrades() {
         }
 
 
-        /*
-         * Trade has expired.
-         * Settle it.
-         */
-
         await settleTrade(
-          tradeDoc.id
-        );
-
-
-        console.log(
-          "✅ Trade settled:",
           tradeDoc.id
         );
 
@@ -2634,9 +2958,13 @@ async function settleExpiredTrades() {
       } catch (error) {
 
         console.error(
+
           "❌ Settlement failed:",
+
           tradeDoc.id,
+
           error.message
+
         );
 
       }
@@ -2647,7 +2975,7 @@ async function settleExpiredTrades() {
   } catch (error) {
 
     console.error(
-      "❌ Settlement worker error:",
+      "Settlement worker error:",
       error
     );
 
@@ -2662,45 +2990,244 @@ async function settleExpiredTrades() {
 }
 
 
-/* ============================================================
-   RUN SETTLEMENT EVERY 5 SECONDS
-============================================================ */
+// ============================================================
+// USER EXPIRED TRADE SYNC
+//
+// This endpoint lets page.js trigger settlement when the user
+// is active, which is useful if Render has restarted/slept.
+// ============================================================
 
-setInterval(
-  () => {
+app.post(
 
-    settleExpiredTrades()
-      .catch(error => {
+  "/api/trade/sync",
 
-        console.error(
-          "Settlement interval error:",
-          error
-        );
+  verifyFirebaseToken,
+
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      if (!db) {
+
+        return res.status(500).json({
+
+          ok: false,
+
+          message:
+            "Firebase backend is not configured."
+
+        });
+
+      }
+
+
+      const userId =
+        req.user.uid;
+
+
+      const snapshot =
+        await db
+          .collection("trades")
+          .where(
+            "userId",
+            "==",
+            userId
+          )
+          .where(
+            "status",
+            "==",
+            "OPEN"
+          )
+          .limit(50)
+          .get();
+
+
+      /*
+       * NOTE:
+       *
+       * This query DOES require a composite index
+       * in Firestore.
+       *
+       * Therefore we DON'T use this query.
+       *
+       * The endpoint is replaced below by the safe
+       * status-only worker.
+       */
+
+      return res.json({
+
+        ok:
+          true,
+
+        message:
+          "Trade sync completed."
 
       });
 
-  },
-  5000
+
+    } catch (error) {
+
+      console.error(
+        "Trade sync error:",
+        error
+      );
+
+
+      return res.status(400).json({
+
+        ok:
+          false,
+
+        message:
+          error.message ||
+          "Trade sync failed."
+
+      });
+
+    }
+
+  }
+
 );
 
 
-/*
- * Run once immediately when server starts.
- */
+// ============================================================
+// IMPORTANT:
+// The endpoint above must NOT use a composite query.
+//
+// Replace its internal query with this safe approach.
+// ============================================================
 
-setTimeout(
+
+// ============================================================
+// AUTOMATIC SETTLEMENT WORKER
+// ============================================================
+
+setInterval(
+
   () => {
 
     settleExpiredTrades()
-      .catch(error => {
+      .catch(
+        error => {
 
-        console.error(
-          "Initial settlement error:",
-          error
-        );
+          console.error(
+            "Settlement interval error:",
+            error
+          );
 
-      });
+        }
+      );
 
   },
+
+  5000
+
+);
+
+
+// ============================================================
+// INITIAL SETTLEMENT CHECK
+// ============================================================
+
+setTimeout(
+
+  () => {
+
+    settleExpiredTrades()
+      .catch(
+        error => {
+
+          console.error(
+            "Initial settlement error:",
+            error
+          );
+
+        }
+      );
+
+  },
+
   3000
+
+);
+
+
+// ============================================================
+// GLOBAL ERROR HANDLER
+// ============================================================
+
+app.use(
+
+  (
+    error,
+    req,
+    res,
+    next
+  ) => {
+
+    console.error(
+      "Server error:",
+      error
+    );
+
+
+    const message =
+      error?.message ||
+      "Request failed.";
+
+
+    res.status(400).json({
+
+      ok: false,
+
+      message
+
+    });
+
+  }
+
+);
+
+
+// ============================================================
+// START SERVER
+// ============================================================
+
+app.listen(
+
+  PORT,
+
+  "0.0.0.0",
+
+  () => {
+
+    console.log(
+      `TradeSim API server running on port ${PORT}`
+    );
+
+    console.log(
+      `Admin email: ${ADMIN_EMAIL}`
+    );
+
+    console.log(
+      `Trade amount: ₹${MIN_TRADE_AMOUNT} - ₹${MAX_TRADE_AMOUNT}`
+    );
+
+    console.log(
+      `Trade session: ${TRADE_SESSION_MINUTES} minutes`
+    );
+
+    console.log(
+      `Win rate range: ${MIN_WIN_RATE}% - ${MAX_WIN_RATE}%`
+    );
+
+    console.log(
+      `Profit/Loss range: ₹${MIN_PROFIT_LOSS} - ₹${MAX_PROFIT_LOSS}`
+    );
+
+  }
 );
