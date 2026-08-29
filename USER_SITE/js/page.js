@@ -1,28 +1,18 @@
 /* =========================================================
    TradeSim Pro - User Wallet
-   Firebase + Dynamic UPI QR + Payment Server
-
-   REAL WALLET SYSTEM
-   - No demo balance
-   - No demo wallet
-   - Top-up via payment request
-   - Withdrawal via withdrawal request
-   - Balance is read from users/{uid}.balance
-   - Balance is NOT changed directly from client
+   Firebase + Dynamic UPI QR + Live Payment Server
 ========================================================= */
-
 
 import {
   auth,
   db
 } from "./firebase.js";
 
-
 import {
   onAuthStateChanged,
-  signOut
+  signOut,
+  getIdToken
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-
 
 import {
   collection,
@@ -34,69 +24,32 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 
-
 /* =========================================================
    CONFIG
 ========================================================= */
 
-
-/*
- * LOCAL:
- * http://localhost:10000
- *
- * LIVE:
- * এখানে তোমার deployed payment server URL বসাবে।
- *
- * Example:
- * https://tradesim-payment-server.onrender.com
- */
-
 const PAYMENT_SERVER_URL =
-  "http://localhost:10000";
-
-
-/*
- * Payment UPI ID
- */
+  "https://tradesim-pro.onrender.com";
 
 const PAYMENT_UPI_ID =
   "9992693790@fam";
 
-
-/*
- * Payment display name
- */
-
 const PAYMENT_NAME =
   "TradeSim Pro";
-
-
-/*
- * Wallet rules
- */
 
 const MIN_WITHDRAWAL =
   50;
 
-
-/*
- * Minimum balance that must remain
- * after withdrawal.
- */
-
 const MIN_REMAINING_BALANCE =
   100;
-
 
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-
 const $ = (id) =>
   document.getElementById(id);
-
 
 
 function money(value) {
@@ -104,13 +57,9 @@ function money(value) {
   const amount =
     Number(value || 0);
 
-  return (
-    "₹" +
-    amount.toFixed(2)
-  );
+  return "₹" + amount.toFixed(2);
 
 }
-
 
 
 function escapeHtml(value) {
@@ -125,36 +74,24 @@ function escapeHtml(value) {
 }
 
 
-
 function getDateMs(value) {
 
   if (!value) {
     return 0;
   }
 
-
   if (
-    typeof value.toMillis ===
-    "function"
+    typeof value.toMillis === "function"
   ) {
-
     return value.toMillis();
-
   }
 
-
-  if (
-    value instanceof Date
-  ) {
-
+  if (value instanceof Date) {
     return value.getTime();
-
   }
-
 
   const parsed =
     new Date(value).getTime();
-
 
   return Number.isFinite(parsed)
     ? parsed
@@ -163,17 +100,14 @@ function getDateMs(value) {
 }
 
 
-
 function formatDate(value) {
 
   const ms =
     getDateMs(value);
 
-
   if (!ms) {
     return "Processing...";
   }
-
 
   return new Date(ms)
     .toLocaleString();
@@ -181,37 +115,52 @@ function formatDate(value) {
 }
 
 
+function showMessage(
+  element,
+  text,
+  success = false
+) {
+
+  if (!element) {
+    return;
+  }
+
+  element.textContent =
+    text;
+
+  element.className =
+    success
+      ? "msg ok"
+      : "msg";
+
+}
+
 
 /* =========================================================
    CURRENT USER
 ========================================================= */
 
-
 let me = null;
 
 let unsubscribeUser = null;
-
 let unsubscribeTopups = null;
-
 let unsubscribeWithdrawals = null;
 
-
 let topupRequests = [];
-
 let withdrawalRequests = [];
 
 
-
 /* =========================================================
-   UPI PAYMENT
+   PAYMENT STATE
 ========================================================= */
 
-
 let currentPaymentAmount = 0;
-
 let currentPaymentReference = "";
 
 
+/* =========================================================
+   PAYMENT REFERENCE
+========================================================= */
 
 function createPaymentReference() {
 
@@ -221,12 +170,10 @@ function createPaymentReference() {
       .slice(2, 9)
       .toUpperCase();
 
-
   const time =
     Date.now()
       .toString(36)
       .toUpperCase();
-
 
   return (
     "TS-" +
@@ -238,6 +185,9 @@ function createPaymentReference() {
 }
 
 
+/* =========================================================
+   CREATE UPI URL
+========================================================= */
 
 function createUpiUrl(
   amount,
@@ -265,7 +215,6 @@ function createUpiUrl(
 
     });
 
-
   return (
     "upi://pay?" +
     params.toString()
@@ -274,54 +223,42 @@ function createUpiUrl(
 }
 
 
-
 /* =========================================================
-   GENERATE DYNAMIC QR
+   GENERATE PAYMENT QR
 ========================================================= */
-
 
 function generatePaymentQr() {
 
   const input =
     $("topupAmount");
 
-
   const paymentBox =
     $("paymentBox");
-
 
   const qrWrap =
     $("qrWrap");
 
-
   const qrImage =
     $("upiQr");
-
 
   const qrAmount =
     $("qrAmount");
 
-
   const payButton =
     $("payWithUpi");
-
 
   const paymentFields =
     $("paymentSubmitForm");
 
-
   const referenceBox =
     $("paymentReference");
+
+  const output =
+    $("topupMsg");
 
 
   const amount =
     Number(input?.value);
-
-
-
-  /* -------------------------------------------------------
-     VALIDATE AMOUNT
-  ------------------------------------------------------- */
 
 
   if (
@@ -330,20 +267,13 @@ function generatePaymentQr() {
   ) {
 
     showMessage(
-      $("topupMsg"),
+      output,
       "Enter a valid positive amount.",
       false
     );
 
     return;
-
   }
-
-
-
-  /* -------------------------------------------------------
-     PAYMENT PRECISION
-  ------------------------------------------------------- */
 
 
   const cleanAmount =
@@ -352,24 +282,11 @@ function generatePaymentQr() {
     );
 
 
-
-  /* -------------------------------------------------------
-     CREATE PAYMENT REFERENCE
-  ------------------------------------------------------- */
-
-
   currentPaymentAmount =
     cleanAmount;
 
-
   currentPaymentReference =
     createPaymentReference();
-
-
-
-  /* -------------------------------------------------------
-     CREATE UPI URL
-  ------------------------------------------------------- */
 
 
   const upiUrl =
@@ -379,45 +296,23 @@ function generatePaymentQr() {
     );
 
 
-
-  /* -------------------------------------------------------
-     SHOW PAYMENT AREA
-  ------------------------------------------------------- */
-
-
   if (paymentBox) {
-
     paymentBox.style.display =
       "block";
-
   }
-
 
   if (qrWrap) {
-
-    qrWrap.classList.add(
-      "show"
-    );
-
+    qrWrap.classList.add("show");
   }
-
 
   if (paymentFields) {
-
-    paymentFields.classList.add(
-      "show"
-    );
-
+    paymentFields.classList.add("show");
   }
-
 
   if (qrAmount) {
-
     qrAmount.textContent =
       money(cleanAmount);
-
   }
-
 
   if (referenceBox) {
 
@@ -427,13 +322,6 @@ function generatePaymentQr() {
 
   }
 
-
-
-  /* -------------------------------------------------------
-     OPEN UPI APP
-  ------------------------------------------------------- */
-
-
   if (payButton) {
 
     payButton.href =
@@ -442,16 +330,9 @@ function generatePaymentQr() {
   }
 
 
-
-  /* -------------------------------------------------------
-     GENERATE QR
-  ------------------------------------------------------- */
-
-
   if (qrImage) {
 
-    qrImage.src =
-      "";
+    qrImage.src = "";
 
     qrImage.alt =
       "Generating payment QR...";
@@ -459,15 +340,39 @@ function generatePaymentQr() {
   }
 
 
-  const qrContainer =
-    document.createElement(
-      "div"
+  /*
+   * Check QR library
+   */
+
+  if (
+    typeof QRCode === "undefined"
+  ) {
+
+    showMessage(
+      output,
+      "QR library failed to load. Please refresh the page.",
+      false
     );
 
+    return;
+  }
 
-  qrContainer.style.display =
-    "none";
 
+  /*
+   * Temporary QR container
+   */
+
+  const qrContainer =
+    document.createElement("div");
+
+  qrContainer.style.position =
+    "fixed";
+
+  qrContainer.style.left =
+    "-99999px";
+
+  qrContainer.style.top =
+    "0";
 
   document.body.appendChild(
     qrContainer
@@ -479,15 +384,9 @@ function generatePaymentQr() {
     new QRCode(
       qrContainer,
       {
-        text:
-          upiUrl,
-
-        width:
-          230,
-
-        height:
-          230,
-
+        text: upiUrl,
+        width: 230,
+        height: 230,
         correctLevel:
           QRCode.CorrectLevel.M
       }
@@ -511,14 +410,14 @@ function generatePaymentQr() {
           generatedImage.src;
 
         qrImage.alt =
-          "UPI payment QR";
+          "Dynamic UPI payment QR";
 
       }
 
 
       qrContainer.remove();
 
-    }, 100);
+    }, 300);
 
 
   } catch (error) {
@@ -528,40 +427,197 @@ function generatePaymentQr() {
       error
     );
 
-
     qrContainer.remove();
 
-
     showMessage(
-      $("topupMsg"),
+      output,
       "Could not generate payment QR.",
       false
+    );
+
+    return;
+  }
+
+
+  if (output) {
+    output.textContent = "";
+  }
+
+}
+
+
+/* =========================================================
+   GET FIREBASE ID TOKEN
+========================================================= */
+
+async function getAuthToken() {
+
+  const user =
+    auth.currentUser;
+
+  if (!user) {
+    throw new Error(
+      "Please login again."
+    );
+  }
+
+
+  /*
+   * Firebase automatically refreshes
+   * the token when required.
+   */
+
+  const token =
+    await getIdToken(
+      user,
+      true
+    );
+
+
+  if (!token) {
+
+    throw new Error(
+      "Could not authenticate your account."
     );
 
   }
 
 
+  return token;
 
-  /* -------------------------------------------------------
-     CLEAR MESSAGE
-  ------------------------------------------------------- */
+}
 
 
-  if ($("topupMsg")) {
+/* =========================================================
+   SERVER REQUEST HELPER
+========================================================= */
 
-    $("topupMsg").textContent =
-      "";
+async function serverRequest(
+  endpoint,
+  options = {}
+) {
+
+  const token =
+    await getAuthToken();
+
+
+  const headers =
+    new Headers(
+      options.headers || {}
+    );
+
+
+  headers.set(
+    "Authorization",
+    "Bearer " + token
+  );
+
+
+  const response =
+    await fetch(
+      PAYMENT_SERVER_URL +
+      endpoint,
+      {
+        ...options,
+        headers
+      }
+    );
+
+
+  let result = null;
+
+
+  try {
+
+    result =
+      await response.json();
+
+  } catch {
+
+    result = null;
+
+  }
+
+
+  if (!response.ok) {
+
+    throw new Error(
+      result?.message ||
+      `Server error (${response.status}).`
+    );
+
+  }
+
+
+  if (
+    result &&
+    result.ok === false
+  ) {
+
+    throw new Error(
+      result.message ||
+      "Request failed."
+    );
+
+  }
+
+
+  return result;
+
+}
+
+
+/* =========================================================
+   TEST SERVER CONNECTION
+========================================================= */
+
+async function testPaymentServer() {
+
+  try {
+
+    const response =
+      await fetch(
+        PAYMENT_SERVER_URL + "/",
+        {
+          method: "GET"
+        }
+      );
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        "Payment server returned an error."
+      );
+
+    }
+
+
+    const result =
+      await response.json();
+
+
+    console.log(
+      "Payment server:",
+      result
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "Payment server connection error:",
+      error
+    );
 
   }
 
 }
 
 
-
 /* =========================================================
-   TOP-UP PAYMENT REQUEST
+   SUBMIT PAYMENT REQUEST
 ========================================================= */
-
 
 async function submitPaymentRequest(
   event
@@ -570,9 +626,15 @@ async function submitPaymentRequest(
   event.preventDefault();
 
 
+  const output =
+    $("topupMsg");
+
+  const button =
+    $("submitPayment");
+
+
   const amount =
     currentPaymentAmount;
-
 
   const reference =
     currentPaymentReference;
@@ -590,19 +652,9 @@ async function submitPaymentRequest(
       ?.[0];
 
 
-  const button =
-    $("submitPayment");
-
-
-  const output =
-    $("topupMsg");
-
-
-
-  /* -------------------------------------------------------
-     VALIDATE PAYMENT
-  ------------------------------------------------------- */
-
+  /*
+   * Validate generated payment
+   */
 
   if (
     !Number.isFinite(amount) ||
@@ -616,9 +668,24 @@ async function submitPaymentRequest(
     );
 
     return;
-
   }
 
+
+  if (!reference) {
+
+    showMessage(
+      output,
+      "Payment reference is missing. Generate the QR again.",
+      false
+    );
+
+    return;
+  }
+
+
+  /*
+   * UTR
+   */
 
   if (
     !utr ||
@@ -632,9 +699,12 @@ async function submitPaymentRequest(
     );
 
     return;
-
   }
 
+
+  /*
+   * Screenshot
+   */
 
   if (!screenshot) {
 
@@ -645,14 +715,7 @@ async function submitPaymentRequest(
     );
 
     return;
-
   }
-
-
-
-  /* -------------------------------------------------------
-     FILE VALIDATION
-  ------------------------------------------------------- */
 
 
   const allowedTypes = [
@@ -675,7 +738,6 @@ async function submitPaymentRequest(
     );
 
     return;
-
   }
 
 
@@ -691,14 +753,7 @@ async function submitPaymentRequest(
     );
 
     return;
-
   }
-
-
-
-  /* -------------------------------------------------------
-     AUTH CHECK
-  ------------------------------------------------------- */
 
 
   if (!me?.uid) {
@@ -710,9 +765,7 @@ async function submitPaymentRequest(
     );
 
     return;
-
   }
-
 
 
   try {
@@ -728,15 +781,15 @@ async function submitPaymentRequest(
     }
 
 
-
-    /* -----------------------------------------------------
-       FORM DATA
-    ----------------------------------------------------- */
-
-
     const formData =
       new FormData();
 
+
+    /*
+     * IMPORTANT:
+     * userId is included only for compatibility.
+     * Server ignores it and uses verified token UID.
+     */
 
     formData.append(
       "userId",
@@ -784,83 +837,31 @@ async function submitPaymentRequest(
     );
 
 
-
-    /* -----------------------------------------------------
-       SEND TOP-UP REQUEST TO SERVER
-    ----------------------------------------------------- */
-
-
-    const response =
-      await fetch(
-        PAYMENT_SERVER_URL +
+    const result =
+      await serverRequest(
         "/api/payment/add-balance",
         {
-          method:
-            "POST",
-
-          body:
-            formData
+          method: "POST",
+          body: formData
         }
       );
 
 
-
-    let result = null;
-
-
-    try {
-
-      result =
-        await response.json();
-
-    } catch {
-
-      result = null;
-
-    }
-
-
-
-    if (
-      !response.ok ||
-      !result?.ok
-    ) {
-
-      throw new Error(
-        result?.message ||
-        "Top-up request failed."
-      );
-
-    }
-
-
-
-    /* -----------------------------------------------------
-       SUCCESS
-    ----------------------------------------------------- */
-
-
     showMessage(
       output,
-      "Top-up request submitted successfully. Please wait for admin verification.",
+      result?.message ||
+      "Payment request submitted successfully. Please wait for admin verification.",
       true
     );
 
 
-
     if ($("utr")) {
-
-      $("utr").value =
-        "";
-
+      $("utr").value = "";
     }
 
 
     if ($("paymentScreenshot")) {
-
-      $("paymentScreenshot").value =
-        "";
-
+      $("paymentScreenshot").value = "";
     }
 
 
@@ -869,27 +870,27 @@ async function submitPaymentRequest(
       $("paymentReference").textContent =
         "Request ID: " +
         (
-          result.requestId ||
+          result?.requestId ||
           reference
         );
 
     }
 
 
-
     /*
-     * IMPORTANT:
+     * Reset payment state.
      *
-     * Client does NOT add balance.
-     *
-     * Balance is added only after
-     * server-side admin approval.
+     * Do NOT reset reference displayed above.
      */
+
+    currentPaymentAmount = 0;
+    currentPaymentReference = "";
+
 
   } catch (error) {
 
     console.error(
-      "Top-up submission error:",
+      "Payment submission error:",
       error
     );
 
@@ -897,9 +898,10 @@ async function submitPaymentRequest(
     showMessage(
       output,
       error.message ||
-      "Could not submit top-up request.",
+      "Could not submit payment request.",
       false
     );
+
 
   } finally {
 
@@ -918,11 +920,9 @@ async function submitPaymentRequest(
 }
 
 
-
 /* =========================================================
-   WITHDRAWAL REQUEST
+   SUBMIT WITHDRAWAL
 ========================================================= */
-
 
 async function submitWithdrawal(
   event
@@ -934,17 +934,23 @@ async function submitWithdrawal(
   const amountInput =
     $("withdrawAmount");
 
-
   const upiInput =
     $("withdrawUpi");
-
 
   const noteInput =
     $("withdrawNote");
 
-
   const output =
     $("withdrawMsg");
+
+  const form =
+    $("withdrawForm");
+
+
+  const button =
+    form?.querySelector(
+      "button[type='submit']"
+    );
 
 
   const amount =
@@ -966,11 +972,9 @@ async function submitWithdrawal(
     "";
 
 
-
-  /* -------------------------------------------------------
-     AMOUNT VALIDATION
-  ------------------------------------------------------- */
-
+  /*
+   * Amount
+   */
 
   if (
     !Number.isFinite(amount) ||
@@ -984,20 +988,19 @@ async function submitWithdrawal(
     );
 
     return;
-
   }
 
 
+  /*
+   * UPI
+   */
 
-  /* -------------------------------------------------------
-     UPI VALIDATION
-  ------------------------------------------------------- */
+  const upiRegex =
+    /^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$/;
 
 
   if (
-    !upiId ||
-    upiId.length < 3 ||
-    upiId.length > 100
+    !upiRegex.test(upiId)
   ) {
 
     showMessage(
@@ -1007,14 +1010,7 @@ async function submitWithdrawal(
     );
 
     return;
-
   }
-
-
-
-  /* -------------------------------------------------------
-     AUTH CHECK
-  ------------------------------------------------------- */
 
 
   if (!me?.uid) {
@@ -1026,17 +1022,25 @@ async function submitWithdrawal(
     );
 
     return;
-
   }
-
 
 
   try {
 
-    /* -----------------------------------------------------
-       GET CURRENT ACCOUNT BALANCE
-    ----------------------------------------------------- */
+    if (button) {
 
+      button.disabled =
+        true;
+
+      button.textContent =
+        "Submitting...";
+
+    }
+
+
+    /*
+     * Read latest wallet balance
+     */
 
     const userSnap =
       await getDoc(
@@ -1067,27 +1071,15 @@ async function submitWithdrawal(
       );
 
 
-
-    /* -----------------------------------------------------
-       CHECK AVAILABLE BALANCE
-    ----------------------------------------------------- */
-
-
     if (
       balance < amount
     ) {
 
       throw new Error(
-        "Insufficient wallet balance."
+        "Insufficient virtual balance."
       );
 
     }
-
-
-
-    /* -----------------------------------------------------
-       KEEP MINIMUM BALANCE
-    ----------------------------------------------------- */
 
 
     if (
@@ -1104,8 +1096,7 @@ async function submitWithdrawal(
 
 
       if (
-        maximum <
-        MIN_WITHDRAWAL
+        maximum < MIN_WITHDRAWAL
       ) {
 
         throw new Error(
@@ -1124,50 +1115,22 @@ async function submitWithdrawal(
     }
 
 
+    /*
+     * Send withdrawal request.
+     *
+     * Authorization token is automatically
+     * added by serverRequest().
+     */
 
-    /* -----------------------------------------------------
-       SUBMIT BUTTON
-    ----------------------------------------------------- */
-
-
-    const button =
-      $("withdrawForm")
-        ?.querySelector(
-          "button[type='submit']"
-        );
-
-
-    if (button) {
-
-      button.disabled =
-        true;
-
-      button.textContent =
-        "Submitting...";
-
-    }
-
-
-
-    /* -----------------------------------------------------
-       SEND WITHDRAWAL REQUEST
-    ----------------------------------------------------- */
-
-
-    const response =
-      await fetch(
-        PAYMENT_SERVER_URL +
+    const result =
+      await serverRequest(
         "/api/payment/withdraw",
         {
-
-          method:
-            "POST",
+          method: "POST",
 
           headers: {
-
             "Content-Type":
               "application/json"
-
           },
 
           body:
@@ -1204,72 +1167,25 @@ async function submitWithdrawal(
       );
 
 
-
-    let result = null;
-
-
-    try {
-
-      result =
-        await response.json();
-
-    } catch {
-
-      result = null;
-
-    }
-
-
-
-    if (
-      !response.ok ||
-      !result?.ok
-    ) {
-
-      throw new Error(
-        result?.message ||
-        "Withdrawal request failed."
-      );
-
-    }
-
-
-
-    /* -----------------------------------------------------
-       SUCCESS
-    ----------------------------------------------------- */
-
-
     showMessage(
       output,
+      result?.message ||
       "Withdrawal request submitted successfully. Admin will review it.",
       true
     );
 
 
     if (amountInput) {
-
-      amountInput.value =
-        "";
-
+      amountInput.value = "";
     }
-
 
     if (upiInput) {
-
-      upiInput.value =
-        "";
-
+      upiInput.value = "";
     }
-
 
     if (noteInput) {
-
-      noteInput.value =
-        "";
-
+      noteInput.value = "";
     }
-
 
 
   } catch (error) {
@@ -1287,14 +1203,8 @@ async function submitWithdrawal(
       false
     );
 
+
   } finally {
-
-    const button =
-      $("withdrawForm")
-        ?.querySelector(
-          "button[type='submit']"
-        );
-
 
     if (button) {
 
@@ -1311,11 +1221,9 @@ async function submitWithdrawal(
 }
 
 
-
 /* =========================================================
-   WALLET REQUEST LISTENERS
+   START WALLET LISTENERS
 ========================================================= */
-
 
 function startWalletListeners() {
 
@@ -1324,37 +1232,25 @@ function startWalletListeners() {
   }
 
 
-
-  /* -------------------------------------------------------
-     CLEAN OLD LISTENERS
-  ------------------------------------------------------- */
-
+  /*
+   * Remove old listeners
+   */
 
   if (unsubscribeTopups) {
-
     unsubscribeTopups();
-
-    unsubscribeTopups =
-      null;
-
+    unsubscribeTopups = null;
   }
 
 
   if (unsubscribeWithdrawals) {
-
     unsubscribeWithdrawals();
-
-    unsubscribeWithdrawals =
-      null;
-
+    unsubscribeWithdrawals = null;
   }
 
 
-
-  /* -------------------------------------------------------
-     TOP-UP REQUESTS
-  ------------------------------------------------------- */
-
+  /*
+   * TOPUP REQUESTS
+   */
 
   const topupQuery =
     query(
@@ -1379,12 +1275,12 @@ function startWalletListeners() {
 
         topupRequests =
           snapshot.docs.map(
-            item => ({
+            document => ({
 
               id:
-                item.id,
+                document.id,
 
-              ...item.data()
+              ...document.data()
 
             })
           );
@@ -1397,7 +1293,7 @@ function startWalletListeners() {
       error => {
 
         console.error(
-          "Top-up listener error:",
+          "Topup listener error:",
           error
         );
 
@@ -1405,11 +1301,9 @@ function startWalletListeners() {
     );
 
 
-
-  /* -------------------------------------------------------
-     WITHDRAWAL REQUESTS
-  ------------------------------------------------------- */
-
+  /*
+   * WITHDRAWAL REQUESTS
+   */
 
   const withdrawalQuery =
     query(
@@ -1434,12 +1328,12 @@ function startWalletListeners() {
 
         withdrawalRequests =
           snapshot.docs.map(
-            item => ({
+            document => ({
 
               id:
-                item.id,
+                document.id,
 
-              ...item.data()
+              ...document.data()
 
             })
           );
@@ -1462,11 +1356,9 @@ function startWalletListeners() {
 }
 
 
-
 /* =========================================================
    RENDER WALLET REQUESTS
 ========================================================= */
-
 
 function renderWalletRequests() {
 
@@ -1482,11 +1374,9 @@ function renderWalletRequests() {
   const items = [];
 
 
-
-  /* -------------------------------------------------------
-     TOP-UP REQUESTS
-  ------------------------------------------------------- */
-
+  /*
+   * TOPUPS
+   */
 
   topupRequests.forEach(
     request => {
@@ -1499,7 +1389,7 @@ function renderWalletRequests() {
           ),
 
         type:
-          "Top-up",
+          "Add Balance",
 
         amount:
           Number(
@@ -1517,7 +1407,7 @@ function renderWalletRequests() {
           request.utr
             ? "UTR: " +
               request.utr
-            : "Top-up request"
+            : "Payment request"
 
       });
 
@@ -1525,11 +1415,9 @@ function renderWalletRequests() {
   );
 
 
-
-  /* -------------------------------------------------------
-     WITHDRAWAL REQUESTS
-  ------------------------------------------------------- */
-
+  /*
+   * WITHDRAWALS
+   */
 
   withdrawalRequests.forEach(
     request => {
@@ -1568,11 +1456,9 @@ function renderWalletRequests() {
   );
 
 
-
-  /* -------------------------------------------------------
-     NEWEST FIRST
-  ------------------------------------------------------- */
-
+  /*
+   * Newest first
+   */
 
   items.sort(
     (a, b) =>
@@ -1581,21 +1467,13 @@ function renderWalletRequests() {
   );
 
 
-
   if (!items.length) {
 
     box.innerHTML =
       '<div class="empty">No wallet requests yet.</div>';
 
     return;
-
   }
-
-
-
-  /* -------------------------------------------------------
-     HTML
-  ------------------------------------------------------- */
 
 
   box.innerHTML =
@@ -1627,13 +1505,10 @@ function renderWalletRequests() {
               <div class="request-main">
 
                 <div class="request-title">
-
                   ${escapeHtml(
                     item.type
                   )}
-
                 </div>
-
 
                 <div class="request-meta">
 
@@ -1651,7 +1526,6 @@ function renderWalletRequests() {
 
                 </div>
 
-
                 <span class="status ${escapeHtml(status)}">
 
                   ${escapeHtml(
@@ -1661,7 +1535,6 @@ function renderWalletRequests() {
                 </span>
 
               </div>
-
 
               <div class="request-amount">
 
@@ -1682,40 +1555,9 @@ function renderWalletRequests() {
 }
 
 
-
 /* =========================================================
-   MESSAGE
+   REALTIME USER BALANCE
 ========================================================= */
-
-
-function showMessage(
-  element,
-  text,
-  success
-) {
-
-  if (!element) {
-    return;
-  }
-
-
-  element.textContent =
-    text;
-
-
-  element.className =
-    success
-      ? "msg ok"
-      : "msg";
-
-}
-
-
-
-/* =========================================================
-   REALTIME ACCOUNT BALANCE
-========================================================= */
-
 
 function startUserBalanceListener() {
 
@@ -1733,9 +1575,8 @@ function startUserBalanceListener() {
 
 
   if (unsubscribeUser) {
-
     unsubscribeUser();
-
+    unsubscribeUser = null;
   }
 
 
@@ -1771,12 +1612,6 @@ function startUserBalanceListener() {
           money(balance);
 
 
-
-        /* -------------------------------------------------
-           TOP BALANCE
-        ------------------------------------------------- */
-
-
         if ($("topBalance")) {
 
           $("topBalance")
@@ -1784,12 +1619,6 @@ function startUserBalanceListener() {
             balanceText;
 
         }
-
-
-
-        /* -------------------------------------------------
-           WALLET BALANCE
-        ------------------------------------------------- */
 
 
         if ($("walletBalance")) {
@@ -1816,21 +1645,17 @@ function startUserBalanceListener() {
 }
 
 
-
 /* =========================================================
-   AUTH
+   AUTH STATE
 ========================================================= */
-
 
 onAuthStateChanged(
   auth,
-
   async user => {
 
-    /* -----------------------------------------------------
-       NOT LOGGED IN
-    ----------------------------------------------------- */
-
+    /*
+     * Not logged in
+     */
 
     if (!user) {
 
@@ -1842,13 +1667,11 @@ onAuthStateChanged(
     }
 
 
-
     try {
 
-      /* ---------------------------------------------------
-         GET USER PROFILE
-      --------------------------------------------------- */
-
+      /*
+       * Get Firestore profile
+       */
 
       const userRef =
         doc(
@@ -1880,15 +1703,12 @@ onAuthStateChanged(
         userSnap.data();
 
 
-
-      /* ---------------------------------------------------
-         DISABLED ACCOUNT
-      --------------------------------------------------- */
-
+      /*
+       * Disabled account
+       */
 
       if (
-        userData.active ===
-        false
+        userData.active === false
       ) {
 
         await signOut(auth);
@@ -1901,11 +1721,9 @@ onAuthStateChanged(
       }
 
 
-
-      /* ---------------------------------------------------
-         CURRENT USER
-      --------------------------------------------------- */
-
+      /*
+       * Current user
+       */
 
       me = {
 
@@ -1922,22 +1740,25 @@ onAuthStateChanged(
       };
 
 
-
-      /* ---------------------------------------------------
-         START REALTIME BALANCE
-      --------------------------------------------------- */
-
+      /*
+       * Start realtime balance
+       */
 
       startUserBalanceListener();
 
 
-
-      /* ---------------------------------------------------
-         START REQUEST LISTENERS
-      --------------------------------------------------- */
-
+      /*
+       * Start request listeners
+       */
 
       startWalletListeners();
+
+
+      /*
+       * Test live backend
+       */
+
+      testPaymentServer();
 
 
     } catch (error) {
@@ -1959,18 +1780,15 @@ onAuthStateChanged(
 );
 
 
-
 /* =========================================================
    BUTTON EVENTS
 ========================================================= */
-
 
 $("generateQr")
   ?.addEventListener(
     "click",
     generatePaymentQr
   );
-
 
 
 $("paymentSubmitForm")
@@ -1980,7 +1798,6 @@ $("paymentSubmitForm")
   );
 
 
-
 $("withdrawForm")
   ?.addEventListener(
     "submit",
@@ -1988,11 +1805,9 @@ $("withdrawForm")
   );
 
 
-
 $("logout")
   ?.addEventListener(
     "click",
-
     async () => {
 
       try {
@@ -2012,21 +1827,16 @@ $("logout")
       }
 
     }
-
   );
 
 
-
 /* =========================================================
-   TOP-UP AMOUNT CHANGE
+   AMOUNT INPUT
 ========================================================= */
-
 
 $("topupAmount")
   ?.addEventListener(
-
     "input",
-
     () => {
 
       const value =
@@ -2035,6 +1845,11 @@ $("topupAmount")
             ?.value
         );
 
+
+      /*
+       * If amount becomes invalid,
+       * hide old QR.
+       */
 
       if (
         !Number.isFinite(value) ||
@@ -2056,48 +1871,34 @@ $("topupAmount")
         currentPaymentAmount =
           0;
 
-
         currentPaymentReference =
           "";
 
       }
 
     }
-
   );
-
 
 
 /* =========================================================
    CLEANUP
 ========================================================= */
 
-
 window.addEventListener(
   "beforeunload",
-
   () => {
 
     if (unsubscribeUser) {
-
       unsubscribeUser();
-
     }
-
 
     if (unsubscribeTopups) {
-
       unsubscribeTopups();
-
     }
 
-
     if (unsubscribeWithdrawals) {
-
       unsubscribeWithdrawals();
-
     }
 
   }
-
 );
