@@ -1,31 +1,78 @@
 rules_version = '2';
+
 service cloud.firestore {
+
   match /databases/{database}/documents {
-    function signedIn(){ return request.auth != null; }
-    function isAdmin(){
-      return signedIn() && request.auth.token.email == "kundusudip019@gmail.com";
+
+    /* =====================================================
+       HELPERS
+    ===================================================== */
+
+    function signedIn() {
+      return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email == "kundusudip019@gmail.com";
+    }
+
+
+    /* =====================================================
+       USERS
+       IMPORTANT:
+       User can NEVER directly change balance.
+    ===================================================== */
+
     match /users/{uid} {
+
+      /* User account creation */
       allow create: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.email == request.auth.token.email;
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow update: if isAdmin() || (
-        signedIn() && request.auth.uid == uid
-        && request.resource.data.email == resource.data.email
-        && request.resource.data.active == resource.data.active
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["balance"])
-        && request.resource.data.balance >= 0
-        && request.resource.data.balance <= resource.data.balance + 550
-        && request.resource.data.balance >= resource.data.balance - 500
-      );
+
+
+      /* User can read own account.
+         Admin can read all accounts. */
+      allow read: if signedIn()
+        && (
+          request.auth.uid == uid
+          || isAdmin()
+        );
+
+
+      /*
+       * User may update only normal profile fields.
+       *
+       * BALANCE IS COMPLETELY PROTECTED.
+       *
+       * Any update containing "balance" is denied.
+       */
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.balance == resource.data.balance
+          && request.resource.data.email == resource.data.email
+        );
+
+
       allow delete: if isAdmin();
     }
 
+
+    /* =====================================================
+       TRADES
+    ===================================================== */
+
     match /trades/{tradeId} {
-      allow read: if signedIn() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow read: if signedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
+
 
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid
@@ -34,49 +81,154 @@ service cloud.firestore {
         && request.resource.data.status == "OPEN"
         && request.resource.data.sessionMinutes == 5;
 
-      allow update: if isAdmin() || (
-        signedIn()
-        && resource.data.userId == request.auth.uid
-        && resource.data.status == "OPEN"
-        && request.resource.data.status == "CLOSED"
-        && request.resource.data.userId == resource.data.userId
-        && request.resource.data.amount == resource.data.amount
-      );
+
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.userId == request.auth.uid
+          && resource.data.status == "OPEN"
+          && request.resource.data.status == "CLOSED"
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.amount == resource.data.amount
+        );
+
+
       allow delete: if isAdmin();
     }
+
+
+    /* =====================================================
+       OFFERS
+    ===================================================== */
 
     match /offers/{offerId} {
+
       allow read: if signedIn();
+
       allow write: if isAdmin();
     }
+
+
+    /* =====================================================
+       SETTINGS
+    ===================================================== */
 
     match /settings/{settingId} {
+
       allow read: if signedIn();
+
       allow write: if isAdmin();
     }
 
+
+    /* =====================================================
+       MARKET STATE
+    ===================================================== */
+
     match /marketState/{stateId} {
+
       allow read: if signedIn();
+
       allow create, update: if signedIn();
+
       allow delete: if isAdmin();
     }
 
+
+    /* =====================================================
+       TOP-UP REQUESTS
+       
+       User can create ONLY a pending request.
+       User cannot approve/reject/change it.
+    ===================================================== */
+
     match /topupRequests/{requestId} {
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "PENDING" && request.resource.data.amount > 0;
-      allow update, delete: if isAdmin();
+
+      allow read: if signedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
+
+
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == "PENDING"
+        && request.resource.data.amount > 0;
+
+
+      /*
+       * Approval/rejection is SERVER-ONLY.
+       *
+       * Admin frontend must NOT directly update this
+       * document.
+       */
+      allow update, delete: if false;
     }
+
+
+    /* =====================================================
+       WITHDRAWAL REQUESTS
+       
+       User can create ONLY a pending request.
+       User cannot approve/reject/change it.
+    ===================================================== */
 
     match /withdrawalRequests/{requestId} {
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "PENDING" && request.resource.data.amount >= 50;
-      allow update, delete: if isAdmin();
+
+      allow read: if signedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
+
+
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == "PENDING"
+        && request.resource.data.amount >= 50;
+
+
+      /*
+       * Approval/rejection is SERVER-ONLY.
+       */
+      allow update, delete: if false;
     }
 
+
+    /* =====================================================
+       WALLET TRANSACTIONS
+       
+       User can READ own transactions.
+       Only backend/server can CREATE them.
+    ===================================================== */
+
     match /walletTransactions/{txId} {
-      allow read: if signedIn() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
-      allow create, update, delete: if isAdmin();
+
+      allow read: if signedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
+
+
+      /*
+       * No client-side transaction creation.
+       *
+       * Balance changes and transaction records must
+       * come from the trusted server.
+       */
+      allow create, update, delete: if false;
     }
+
+
+    /* =====================================================
+       DEFAULT DENY
+    ===================================================== */
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
   }
 }

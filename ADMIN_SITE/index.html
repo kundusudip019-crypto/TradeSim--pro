@@ -12,10 +12,6 @@
 
   <style>
 
-    /* =====================================================
-       RESET
-    ===================================================== */
-
     * {
       box-sizing: border-box;
     }
@@ -27,6 +23,7 @@
     body {
       margin: 0;
       min-height: 100vh;
+
       background:
         radial-gradient(
           circle at 80% 0%,
@@ -492,7 +489,7 @@
 
 
     /* =====================================================
-       USERS & WALLET
+       USERS
     ===================================================== */
 
     .users-panel {
@@ -642,12 +639,6 @@
         #d5e7f2;
     }
 
-    .reset-btn {
-
-      white-space:
-        nowrap;
-    }
-
 
     /* =====================================================
        TABLE
@@ -742,47 +733,6 @@
 
       border-bottom:
         none;
-    }
-
-
-    /* =====================================================
-       TABLE INPUTS
-    ===================================================== */
-
-    table input[type="number"] {
-
-      width:
-        115px;
-
-      height:
-        37px;
-
-      padding:
-        0 10px;
-
-      border:
-        1px solid #28506a;
-
-      border-radius:
-        8px;
-
-      background:
-        #061925;
-
-      color:
-        #fff;
-
-      outline:
-        none;
-    }
-
-    table input[type="number"]:focus {
-
-      border-color:
-        #159cff;
-
-      box-shadow:
-        0 0 0 3px rgba(21, 156, 255, .10);
     }
 
 
@@ -969,26 +919,6 @@
 
 
     /* =====================================================
-       WALLET MESSAGE
-    ===================================================== */
-
-    .wallet-message {
-
-      min-height:
-        20px;
-
-      margin-top:
-        12px;
-
-      color:
-        #67c9ff;
-
-      font-size:
-        13px;
-    }
-
-
-    /* =====================================================
        MOBILE / TABLET
     ===================================================== */
 
@@ -998,12 +928,6 @@
 
         grid-template-columns:
           repeat(3, 1fr);
-      }
-
-      .stats .stat:last-child {
-
-        grid-column:
-          auto;
       }
 
     }
@@ -1192,12 +1116,6 @@
           column;
       }
 
-      .reset-btn {
-
-        width:
-          100%;
-      }
-
       #settings .settings-grid {
 
         grid-template-columns:
@@ -1250,7 +1168,7 @@
     <a href="#requests">
 
       💳
-      Requests
+      Top-up & Withdrawal
 
     </a>
 
@@ -1364,7 +1282,7 @@
       <div class="stat">
 
         <small>
-          Demo Volume
+          Trading Volume
         </small>
 
         <strong id="volume">
@@ -1377,7 +1295,7 @@
       <div class="stat">
 
         <small>
-          Platform Simulation
+          Platform P/L
         </small>
 
         <strong id="platformProfit">
@@ -1422,20 +1340,10 @@
           </div>
 
           <div class="section-subtitle">
-            Manage user accounts, demo balance and account status
+            View user accounts and their actual wallet balance
           </div>
 
         </div>
-
-
-        <button
-          id="resetDemo"
-          class="btn ghost reset-btn"
-          type="button">
-
-          ↻ Reset Demo Data
-
-        </button>
 
       </div>
 
@@ -1479,484 +1387,569 @@
           </span>
 
           <strong>
-            Demo
+            Requests Only
           </strong>
 
         </div>
 
 
-      <div class="summary-box">
+      </div>
+
+
+      <!-- USER TABLE -->
+
+      <div class="tablewrap">
+
+        <table>
+
+          <thead>
+
+            <tr>
+
+              <th>
+                User
+              </th>
+
+              <th>
+                Email
+              </th>
+
+              <th>
+                Balance
+              </th>
+
+              <th>
+                Balance Control
+              </th>
+
+              <th>
+                Status
+              </th>
+
+              <th>
+                Referral
+              </th>
+
+              <th>
+                Action
+              </th>
+
+            </tr>
+
+          </thead>
+
+
+          <tbody id="usersTable">
+
+            <tr>
+
+              <td
+                colspan="7"
+                class="muted">
+
+                Loading users...
+
+              </td>
+
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+
+      <div
+        id="walletMsg"
+        class="wallet-message">
+      </div>
+
+    </section>
+
+
+
+    <!-- =================================================
+         TOP-UP & WITHDRAWAL REQUESTS
+    ================================================== -->
+
+    <section
+      id="requests"
+      class="panel">
+
+
+      <div class="panel-head">
+
+        <div>
+
+          <div class="section-title">
+            💳 Top-up & Withdrawal Requests
+          </div>
+
+          <div class="section-subtitle">
+            Review pending wallet requests and approve or reject them
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="request-info">
+
         <span>
-          Wallet Management
+          ℹ️
         </span>
 
-        <strong>
-          Demo
-        </strong>
-      </div>
-
-    </div>
-
-
-    <!-- USER TABLE -->
-
-    <div class="tablewrap">
-
-      <table>
-
-        <thead>
-
-          <tr>
-            <th>User</th>
-            <th>Email</th>
-            <th>Balance</th>
-            <th>Add Balance</th>
-            <th>Status</th>
-            <th>Referral</th>
-            <th>Action</th>
-          </tr>
-
-        </thead>
-
-
-        <tbody id="usersTable">
-
-          <tr>
-            <td
-              colspan="7"
-              class="muted">
-
-              Loading users...
-
-            </td>
-          </tr>
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-
-    <div
-      id="walletMsg"
-      class="wallet-message">
-    </div>
-
-  </section>
-
-
-
-  <!-- =================================================
-       BALANCE & WITHDRAWAL REQUESTS
-  ================================================== -->
-
-  <section
-    id="requests"
-    class="panel">
-
-
-    <div class="panel-head">
-
-      <div>
-
-        <div class="section-title">
-          💳 Balance & Withdrawal Requests
-        </div>
-
-        <div class="section-subtitle">
-          Review and manage demo-wallet balance requests
-        </div>
+        <span>
+          Only approved top-up or withdrawal requests can change
+          the user's actual wallet balance. Balance changes are
+          processed securely by the payment server.
+        </span>
 
       </div>
 
-    </div>
+
+      <div
+        id="requestMsg"
+        class="msg">
+      </div>
 
 
-    <div class="request-info">
+      <!-- TOP-UP -->
 
-      <span>
-        ℹ️
-      </span>
+      <div
+        class="section-title"
+        style="margin:20px 0 12px;">
 
-      <span>
-        Review demo-wallet requests.
-        Approved withdrawals must leave at least
-        ₹100 in the user's wallet.
-      </span>
-
-    </div>
-
-
-    <div
-      id="requestMsg"
-      class="msg">
-    </div>
-
-
-    <div class="tablewrap">
-
-      <table>
-
-        <thead>
-
-          <tr>
-
-            <th>
-              Type
-            </th>
-
-            <th>
-              User
-            </th>
-
-            <th>
-              Amount
-            </th>
-
-            <th>
-              Status
-            </th>
-
-            <th>
-              Action
-            </th>
-
-          </tr>
-
-        </thead>
-
-
-        <tbody id="requestsTable">
-
-          <tr>
-
-            <td
-              colspan="5"
-              class="muted">
-
-              Loading requests...
-
-            </td>
-
-          </tr>
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-  </section>
-
-
-
-  <!-- =================================================
-       RECENT TRADES
-  ================================================== -->
-
-  <section
-    id="trades"
-    class="panel trade-panel">
-
-
-    <div class="panel-head">
-
-      <div>
-
-        <div class="section-title">
-          📈 Recent Trades
-        </div>
-
-        <div class="section-subtitle">
-          View the latest demo trading activity
-        </div>
+        Top-up Requests
 
       </div>
 
-    </div>
+
+      <div class="tablewrap">
+
+        <table>
+
+          <thead>
+
+            <tr>
+
+              <th>
+                User
+              </th>
+
+              <th>
+                Amount
+              </th>
+
+              <th>
+                Reference
+              </th>
+
+              <th>
+                Date
+              </th>
+
+              <th>
+                Status
+              </th>
+
+              <th>
+                Action
+              </th>
+
+            </tr>
+
+          </thead>
 
 
-    <div class="tablewrap">
+          <tbody id="topupTable">
 
-      <table>
+            <tr>
 
-        <thead>
+              <td
+                colspan="6"
+                class="muted">
 
-          <tr>
+                Loading top-up requests...
 
-            <th>
-              User
-            </th>
+              </td>
 
-            <th>
-              Side
-            </th>
+            </tr>
 
-            <th>
-              Amount
-            </th>
+          </tbody>
 
-            <th>
-              Price
-            </th>
+        </table>
 
-            <th>
-              P/L
-            </th>
-
-            <th>
-              Platform
-            </th>
-
-            <th>
-              Status
-            </th>
-
-          </tr>
-
-        </thead>
-
-
-        <tbody id="tradesTable">
-
-          <tr>
-
-            <td
-              colspan="7"
-              class="muted">
-
-              Loading trades...
-
-            </td>
-
-          </tr>
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-  </section>
+      </div>
 
 
 
-  <!-- =================================================
-       OFFERS
-  ================================================== -->
+      <!-- WITHDRAWAL -->
 
-  <section
-    id="offers"
-    class="panel">
+      <div
+        class="section-title"
+        style="margin:25px 0 12px;">
+
+        Withdrawal Requests
+
+      </div>
 
 
-    <div class="panel-head">
+      <div class="tablewrap">
 
-      <div>
+        <table>
 
-        <div class="section-title">
-          🎁 Offers
-        </div>
+          <thead>
 
-        <div class="section-subtitle">
-          Create promotional offers for demo users
+            <tr>
+
+              <th>
+                User
+              </th>
+
+              <th>
+                Amount
+              </th>
+
+              <th>
+                Reference
+              </th>
+
+              <th>
+                Date
+              </th>
+
+              <th>
+                Status
+              </th>
+
+              <th>
+                Action
+              </th>
+
+            </tr>
+
+          </thead>
+
+
+          <tbody id="withdrawalTable">
+
+            <tr>
+
+              <td
+                colspan="6"
+                class="muted">
+
+                Loading withdrawal requests...
+
+              </td>
+
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </section>
+
+
+
+    <!-- =================================================
+         RECENT TRADES
+    ================================================== -->
+
+    <section
+      id="trades"
+      class="panel trade-panel">
+
+
+      <div class="panel-head">
+
+        <div>
+
+          <div class="section-title">
+            📈 Recent Trades
+          </div>
+
+          <div class="section-subtitle">
+            View the latest trading activity
+          </div>
+
         </div>
 
       </div>
 
-    </div>
+
+      <div class="tablewrap">
+
+        <table>
+
+          <thead>
+
+            <tr>
+
+              <th>
+                User
+              </th>
+
+              <th>
+                Side
+              </th>
+
+              <th>
+                Amount
+              </th>
+
+              <th>
+                Price
+              </th>
+
+              <th>
+                P/L
+              </th>
+
+              <th>
+                Platform
+              </th>
+
+              <th>
+                Status
+              </th>
+
+            </tr>
+
+          </thead>
 
 
-    <div class="settings-grid">
+          <tbody id="tradesTable">
+
+            <tr>
+
+              <td
+                colspan="7"
+                class="muted">
+
+                Loading trades...
+
+              </td>
+
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </section>
 
 
-      <input
-        id="offerTitle"
-        type="text"
-        placeholder="Offer title">
+
+    <!-- =================================================
+         OFFERS
+    ================================================== -->
+
+    <section
+      id="offers"
+      class="panel">
 
 
-      <input
-        id="offerDescription"
-        type="text"
-        placeholder="Offer description">
+      <div class="panel-head">
+
+        <div>
+
+          <div class="section-title">
+            🎁 Offers
+          </div>
+
+          <div class="section-subtitle">
+            Create promotional offers for users
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="settings-grid">
+
+
+        <input
+          id="offerTitle"
+          type="text"
+          placeholder="Offer title">
+
+
+        <input
+          id="offerDescription"
+          type="text"
+          placeholder="Offer description">
+
+
+        <button
+          id="addOffer"
+          class="btn"
+          type="button">
+
+          + Add Offer
+
+        </button>
+
+
+      </div>
+
+
+      <div
+        id="offerMsg"
+        class="msg">
+      </div>
+
+    </section>
+
+
+
+    <!-- =================================================
+         TRADING SETTINGS
+    ================================================== -->
+
+    <section
+      id="settings"
+      class="panel">
+
+
+      <div class="panel-head">
+
+        <div>
+
+          <div class="section-title">
+            ⚙️ Trading Settings
+          </div>
+
+          <div class="section-subtitle">
+            Configure trading limits and platform parameters
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="settings-grid">
+
+
+        <label>
+
+          Min Amount
+
+          <input
+            id="min"
+            type="number"
+            min="0"
+            placeholder="100">
+
+        </label>
+
+
+        <label>
+
+          Max Amount
+
+          <input
+            id="max"
+            type="number"
+            min="0"
+            placeholder="500">
+
+        </label>
+
+
+        <label>
+
+          Trading Hours
+
+          <input
+            id="tradeHours"
+            type="number"
+            min="0"
+            placeholder="5">
+
+        </label>
+
+
+        <label>
+
+          User P/L Min
+
+          <input
+            id="userProfitMin"
+            type="number"
+            placeholder="10">
+
+        </label>
+
+
+        <label>
+
+          User P/L Max
+
+          <input
+            id="userProfitMax"
+            type="number"
+            placeholder="50">
+
+        </label>
+
+
+        <label>
+
+          Platform Min
+
+          <input
+            id="platformProfitMin"
+            type="number"
+            placeholder="5">
+
+        </label>
+
+
+        <label>
+
+          Platform Max
+
+          <input
+            id="platformProfitMax"
+            type="number"
+            placeholder="10">
+
+        </label>
+
+
+      </div>
 
 
       <button
-        id="addOffer"
+        id="saveSettings"
         class="btn"
         type="button">
 
-        + Add Offer
+        💾 Save Settings
 
       </button>
 
 
-    </div>
-
-
-    <div
-      id="offerMsg"
-      class="msg">
-    </div>
-
-  </section>
-
-
-
-  <!-- =================================================
-       TRADING SETTINGS
-  ================================================== -->
-
-  <section
-    id="settings"
-    class="panel">
-
-
-    <div class="panel-head">
-
-      <div>
-
-        <div class="section-title">
-          ⚙️ Trading Settings
-        </div>
-
-        <div class="section-subtitle">
-          Configure demo trading limits and simulation values
-        </div>
-
+      <div
+        id="settingsMsg"
+        class="msg">
       </div>
 
-    </div>
+    </section>
 
 
-    <div class="settings-grid">
-
-
-      <!-- MIN AMOUNT -->
-
-      <label>
-
-        Min Amount
-
-        <input
-          id="min"
-          type="number"
-          min="0"
-          placeholder="100">
-
-      </label>
-
-
-      <!-- MAX AMOUNT -->
-
-      <label>
-
-        Max Amount
-
-        <input
-          id="max"
-          type="number"
-          min="0"
-          placeholder="500">
-
-      </label>
-
-
-      <!-- TRADING HOURS -->
-
-      <label>
-
-        Trading Hours
-
-        <input
-          id="tradeHours"
-          type="number"
-          min="0"
-          placeholder="5">
-
-      </label>
-
-
-      <!-- USER P/L MIN -->
-
-      <label>
-
-        User P/L Min
-
-        <input
-          id="userProfitMin"
-          type="number"
-          placeholder="10">
-
-      </label>
-
-
-      <!-- USER P/L MAX -->
-
-      <label>
-
-        User P/L Max
-
-        <input
-          id="userProfitMax"
-          type="number"
-          placeholder="50">
-
-      </label>
-
-
-      <!-- PLATFORM MIN -->
-
-      <label>
-
-        Platform Min
-
-        <input
-          id="platformProfitMin"
-          type="number"
-          placeholder="5">
-
-      </label>
-
-
-      <!-- PLATFORM MAX -->
-
-      <label>
-
-        Platform Max
-
-        <input
-          id="platformProfitMax"
-          type="number"
-          placeholder="10">
-
-      </label>
-
-
-    </div>
-
-
-    <button
-      id="saveSettings"
-      class="btn"
-      type="button">
-
-      💾 Save Settings
-
-    </button>
-
-
-    <div
-      id="settingsMsg"
-      class="msg">
-    </div>
-
-  </section>
-
-
-</main>
+  </main>
 
 </div>
 

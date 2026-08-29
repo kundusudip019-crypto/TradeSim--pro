@@ -1,599 +1,1725 @@
+/* =========================================================
+   TradeSim Pro - User Wallet
+   Firebase + Dynamic UPI QR + Payment Server
+
+   REAL WALLET SYSTEM
+   - No demo balance
+   - No demo wallet
+   - Top-up via payment request
+   - Withdrawal via withdrawal request
+   - Balance is read from users/{uid}.balance
+   - Balance is NOT changed directly from client
+========================================================= */
+
+
 import {
   auth,
   db
 } from "./firebase.js";
+
 
 import {
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
+
 import {
-  doc,
-  getDoc,
-  onSnapshot,
   collection,
   query,
   where,
-  getDocs,
-  addDoc,
-  runTransaction,
-  serverTimestamp
+  onSnapshot,
+  doc,
+  getDoc
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 
+
 /* =========================================================
-   GLOBAL
+   CONFIG
 ========================================================= */
 
-const $ = (id) => document.getElementById(id);
 
-const ADMIN = "kundusudip019@gmail.com";
+/*
+ * LOCAL:
+ * http://localhost:10000
+ *
+ * LIVE:
+ * এখানে তোমার deployed payment server URL বসাবে।
+ *
+ * Example:
+ * https://tradesim-payment-server.onrender.com
+ */
 
-let me = null;
-let rows = [];
-let unsubscribeUser = null;
-let unsubscribeTrades = null;
+const PAYMENT_SERVER_URL =
+  "http://localhost:10000";
 
-const SESSION =
-  window.TRADE_CONFIG?.sessionDurationMs ??
-  (5 * 60 * 1000);
+
+/*
+ * Payment UPI ID
+ */
+
+const PAYMENT_UPI_ID =
+  "9992693790@fam";
+
+
+/*
+ * Payment display name
+ */
+
+const PAYMENT_NAME =
+  "TradeSim Pro";
+
+
+/*
+ * Wallet rules
+ */
+
+const MIN_WITHDRAWAL =
+  50;
+
+
+/*
+ * Minimum balance that must remain
+ * after withdrawal.
+ */
+
+const MIN_REMAINING_BALANCE =
+  100;
+
 
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-const money = (n) => {
-  const value = Number(n || 0);
 
-  return `₹${value.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
-};
+const $ = (id) =>
+  document.getElementById(id);
 
 
-const escapeHtml = (value) => {
-  return String(value ?? "").replace(
-    /[&<>"']/g,
-    (char) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    }[char])
+
+function money(value) {
+
+  const amount =
+    Number(value || 0);
+
+  return (
+    "₹" +
+    amount.toFixed(2)
   );
-};
-
-
-const getDateMs = (timestamp) => {
-  if (!timestamp) return 0;
-
-  if (typeof timestamp.toMillis === "function") {
-    return timestamp.toMillis();
-  }
-
-  if (typeof timestamp.toDate === "function") {
-    return timestamp.toDate().getTime();
-  }
-
-  return 0;
-};
-
-
-/* =========================================================
-   NAVIGATION
-========================================================= */
-
-function nav() {
-
-  const currentPage =
-    location.pathname
-      .split("/")
-      .pop()
-      .toLowerCase();
-
-  document
-    .querySelectorAll("aside a")
-    .forEach((link) => {
-
-      const href =
-        link
-          .getAttribute("href")
-          ?.split("/")
-          .pop()
-          .toLowerCase();
-
-      if (href === currentPage) {
-        link.classList.add("active");
-      }
-    });
-
-
-  const logout = $("logout");
-
-  if (logout) {
-
-    logout.addEventListener("click", async () => {
-
-      try {
-
-        if (unsubscribeUser) {
-          unsubscribeUser();
-        }
-
-        if (unsubscribeTrades) {
-          unsubscribeTrades();
-        }
-
-        await signOut(auth);
-
-        location.href = "login.html";
-
-      } catch (error) {
-
-        console.error("Logout error:", error);
-
-      }
-
-    });
-
-  }
 
 }
 
 
-/* =========================================================
-   CLOSE EXPIRED DEMO TRADE
-========================================================= */
 
-async function closeDue(trade) {
+function escapeHtml(value) {
 
-  if (!trade) return;
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 
-  if (trade.status !== "OPEN") {
-    return;
+}
+
+
+
+function getDateMs(value) {
+
+  if (!value) {
+    return 0;
   }
 
-  const createdMs =
-    getDateMs(trade.createdAt);
-
-  if (!createdMs) {
-    return;
-  }
 
   if (
-    Date.now() - createdMs <
-    SESSION
+    typeof value.toMillis ===
+    "function"
   ) {
-    return;
+
+    return value.toMillis();
+
   }
 
 
-  const currentUser =
-    auth.currentUser;
+  if (
+    value instanceof Date
+  ) {
 
-  if (!currentUser) {
-    return;
+    return value.getTime();
+
   }
 
 
-  const userRef =
-    doc(
-      db,
-      "users",
-      currentUser.uid
-    );
+  const parsed =
+    new Date(value).getTime();
 
-  const tradeRef =
-    doc(
-      db,
-      "trades",
-      trade.id
-    );
 
-  const marketRef =
-    doc(
-      db,
-      "marketState",
-      "demo"
-    );
-
-
-  try {
-
-    await runTransaction(
-      db,
-      async (tx) => {
-
-        const userSnap =
-          await tx.get(userRef);
-
-        const tradeSnap =
-          await tx.get(tradeRef);
-
-        const marketSnap =
-          await tx.get(marketRef);
-
-
-        if (
-          !userSnap.exists() ||
-          !tradeSnap.exists()
-        ) {
-          return;
-        }
-
-
-        const tradeData =
-          tradeSnap.data();
-
-
-        /*
-         * Another browser/tab may already
-         * have closed this trade.
-         */
-        if (tradeData.status !== "OPEN") {
-          return;
-        }
-
-
-        /* ==============================================
-           SHARED MARKET STATE
-        ============================================== */
-
-        const market =
-          marketSnap.exists()
-            ? marketSnap.data()
-            : {
-                grossProfit: 0,
-                grossLoss: 0,
-                netResult: 0,
-                tradeCount: 0,
-                profitCount: 0,
-                lossCount: 0
-              };
-
-
-        let grossProfit =
-          Number(
-            market.grossProfit || 0
-          );
-
-        let grossLoss =
-          Number(
-            market.grossLoss || 0
-          );
-
-
-        const tradeCount =
-          Number(
-            market.tradeCount || 0
-          );
-
-        const profitCount =
-          Number(
-            market.profitCount || 0
-          );
-
-        const lossCount =
-          Number(
-            market.lossCount || 0
-          );
-
-
-        /* ==============================================
-           RANDOM SHARED POOL RATE
-
-           IMPORTANT:
-           This is NOT saved to the user.
-
-           It belongs to the shared demo market
-           distribution for this completed trade.
-        ============================================== */
-
-        const config =
-          window.TRADE_CONFIG || {};
-
-
-        const minRate = Math.max(
-          22,
-          Number(
-            config.minWinRate ?? 22
-          )
-        );
-
-        const maxRate = Math.min(
-          90,
-          Number(
-            config.maxWinRate ?? 90
-          )
-        );
-
-
-        const poolWinRate =
-          Math.floor(
-            minRate +
-            Math.random() *
-            (maxRate - minRate + 1)
-          );
-
-
-        /* ==============================================
-           RANDOM P/L AMOUNT
-
-           Demo amount range:
-           ₹10 – ₹50 by default
-        ============================================== */
-
-        const minAmount = Math.max(
-          1,
-          Number(
-            config.minAmount ?? 10
-          )
-        );
-
-        const maxAmount = Math.max(
-          minAmount,
-          Number(
-            config.maxAmount ?? 50
-          )
-        );
-
-
-        const pnlAmount =
-          Math.floor(
-            minAmount +
-            Math.random() *
-            (maxAmount - minAmount + 1)
-          );
-
-
-        /* ==============================================
-           SHARED DEMO OUTCOME
-        ============================================== */
-
-        const wantsProfit =
-          Math.random() <
-          poolWinRate / 100;
-
-
-        /*
-         * Keep aggregate demo result from
-         * becoming positive.
-
-         * This is a virtual/demo simulation only.
-         */
-
-        const availableLoss =
-          Math.max(
-            0,
-            grossLoss - grossProfit
-          );
-
-
-        let pnl;
-
-
-        if (
-          wantsProfit &&
-          availableLoss > 0
-        ) {
-
-          pnl =
-            Math.min(
-              pnlAmount,
-              availableLoss
-            );
-
-        } else {
-
-          pnl =
-            -pnlAmount;
-
-        }
-
-
-        /* ==============================================
-           RETURN ORIGINAL TRADE STAKE + P/L
-        ============================================== */
-
-        const userData =
-          userSnap.data();
-
-        const currentBalance =
-          Number(
-            userData.balance || 0
-          );
-
-
-        const tradeStake =
-          Number(
-            tradeData.amount || 0
-          );
-
-
-        const newBalance =
-          currentBalance +
-          tradeStake +
-          pnl;
-
-
-        /* ==============================================
-           UPDATE USER
-        ============================================== */
-
-        tx.update(
-          userRef,
-          {
-            balance:
-              Number(
-                newBalance.toFixed(2)
-              )
-          }
-        );
-
-
-        /* ==============================================
-           UPDATE TRADE
-        ============================================== */
-
-        tx.update(
-          tradeRef,
-          {
-            status: "CLOSED",
-
-            pnl:
-              Number(
-                pnl.toFixed(2)
-              ),
-
-            platformProfit:
-              Number(
-                (
-                  5 +
-                  Math.random() * 5
-                ).toFixed(2)
-              ),
-
-            /*
-             * This is informational for
-             * the demo trade only.
-             */
-            poolWinRate,
-
-            result:
-              pnl > 0
-                ? "PROFIT"
-                : "LOSS",
-
-            closedAt:
-              serverTimestamp()
-          }
-        );
-
-
-        /* ==============================================
-           UPDATE SHARED MARKET STATE
-        ============================================== */
-
-        if (pnl > 0) {
-
-          grossProfit += pnl;
-
-        } else {
-
-          grossLoss +=
-            Math.abs(pnl);
-
-        }
-
-
-        tx.set(
-          marketRef,
-          {
-            grossProfit:
-              Number(
-                grossProfit.toFixed(2)
-              ),
-
-            grossLoss:
-              Number(
-                grossLoss.toFixed(2)
-              ),
-
-            netResult:
-              Number(
-                (
-                  grossProfit -
-                  grossLoss
-                ).toFixed(2)
-              ),
-
-            tradeCount:
-              tradeCount + 1,
-
-            profitCount:
-              profitCount +
-              (pnl > 0 ? 1 : 0),
-
-            lossCount:
-              lossCount +
-              (pnl < 0 ? 1 : 0),
-
-            lastPoolWinRate:
-              poolWinRate,
-
-            updatedAt:
-              serverTimestamp()
-          },
-          {
-            merge: true
-          }
-        );
-
-      }
-    );
-
-  } catch (error) {
-
-    console.error(
-      "closeDue error:",
-      error
-    );
-
-  }
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
 
 }
 
 
+
+function formatDate(value) {
+
+  const ms =
+    getDateMs(value);
+
+
+  if (!ms) {
+    return "Processing...";
+  }
+
+
+  return new Date(ms)
+    .toLocaleString();
+
+}
+
+
+
 /* =========================================================
-   OPEN DEMO TRADE
+   CURRENT USER
 ========================================================= */
 
-async function trade(side) {
+
+let me = null;
+
+let unsubscribeUser = null;
+
+let unsubscribeTopups = null;
+
+let unsubscribeWithdrawals = null;
+
+
+let topupRequests = [];
+
+let withdrawalRequests = [];
+
+
+
+/* =========================================================
+   UPI PAYMENT
+========================================================= */
+
+
+let currentPaymentAmount = 0;
+
+let currentPaymentReference = "";
+
+
+
+function createPaymentReference() {
+
+  const random =
+    Math.random()
+      .toString(36)
+      .slice(2, 9)
+      .toUpperCase();
+
+
+  const time =
+    Date.now()
+      .toString(36)
+      .toUpperCase();
+
+
+  return (
+    "TS-" +
+    time +
+    "-" +
+    random
+  );
+
+}
+
+
+
+function createUpiUrl(
+  amount,
+  reference
+) {
+
+  const params =
+    new URLSearchParams({
+
+      pa:
+        PAYMENT_UPI_ID,
+
+      pn:
+        PAYMENT_NAME,
+
+      am:
+        Number(amount)
+          .toFixed(2),
+
+      cu:
+        "INR",
+
+      tn:
+        reference
+
+    });
+
+
+  return (
+    "upi://pay?" +
+    params.toString()
+  );
+
+}
+
+
+
+/* =========================================================
+   GENERATE DYNAMIC QR
+========================================================= */
+
+
+function generatePaymentQr() {
 
   const input =
-    $("amount");
+    $("topupAmount");
 
-  const message =
-    $("tradeMsg");
+
+  const paymentBox =
+    $("paymentBox");
+
+
+  const qrWrap =
+    $("qrWrap");
+
+
+  const qrImage =
+    $("upiQr");
+
+
+  const qrAmount =
+    $("qrAmount");
+
+
+  const payButton =
+    $("payWithUpi");
+
+
+  const paymentFields =
+    $("paymentSubmitForm");
+
+
+  const referenceBox =
+    $("paymentReference");
 
 
   const amount =
-    Number(
-      input?.value
-    );
+    Number(input?.value);
+
+
+
+  /* -------------------------------------------------------
+     VALIDATE AMOUNT
+  ------------------------------------------------------- */
 
 
   if (
     !Number.isFinite(amount) ||
-    amount < 100 ||
-    amount > 500
+    amount <= 0
   ) {
 
-    if (message) {
+    showMessage(
+      $("topupMsg"),
+      "Enter a valid positive amount.",
+      false
+    );
 
-      message.textContent =
-        "Amount must be between virtual ₹100 and ₹500.";
+    return;
 
-      message.className =
-        "msg";
+  }
+
+
+
+  /* -------------------------------------------------------
+     PAYMENT PRECISION
+  ------------------------------------------------------- */
+
+
+  const cleanAmount =
+    Number(
+      amount.toFixed(2)
+    );
+
+
+
+  /* -------------------------------------------------------
+     CREATE PAYMENT REFERENCE
+  ------------------------------------------------------- */
+
+
+  currentPaymentAmount =
+    cleanAmount;
+
+
+  currentPaymentReference =
+    createPaymentReference();
+
+
+
+  /* -------------------------------------------------------
+     CREATE UPI URL
+  ------------------------------------------------------- */
+
+
+  const upiUrl =
+    createUpiUrl(
+      cleanAmount,
+      currentPaymentReference
+    );
+
+
+
+  /* -------------------------------------------------------
+     SHOW PAYMENT AREA
+  ------------------------------------------------------- */
+
+
+  if (paymentBox) {
+
+    paymentBox.style.display =
+      "block";
+
+  }
+
+
+  if (qrWrap) {
+
+    qrWrap.classList.add(
+      "show"
+    );
+
+  }
+
+
+  if (paymentFields) {
+
+    paymentFields.classList.add(
+      "show"
+    );
+
+  }
+
+
+  if (qrAmount) {
+
+    qrAmount.textContent =
+      money(cleanAmount);
+
+  }
+
+
+  if (referenceBox) {
+
+    referenceBox.textContent =
+      "Payment reference: " +
+      currentPaymentReference;
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     OPEN UPI APP
+  ------------------------------------------------------- */
+
+
+  if (payButton) {
+
+    payButton.href =
+      upiUrl;
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     GENERATE QR
+  ------------------------------------------------------- */
+
+
+  if (qrImage) {
+
+    qrImage.src =
+      "";
+
+    qrImage.alt =
+      "Generating payment QR...";
+
+  }
+
+
+  const qrContainer =
+    document.createElement(
+      "div"
+    );
+
+
+  qrContainer.style.display =
+    "none";
+
+
+  document.body.appendChild(
+    qrContainer
+  );
+
+
+  try {
+
+    new QRCode(
+      qrContainer,
+      {
+        text:
+          upiUrl,
+
+        width:
+          230,
+
+        height:
+          230,
+
+        correctLevel:
+          QRCode.CorrectLevel.M
+      }
+    );
+
+
+    setTimeout(() => {
+
+      const generatedImage =
+        qrContainer.querySelector(
+          "img"
+        );
+
+
+      if (
+        generatedImage &&
+        qrImage
+      ) {
+
+        qrImage.src =
+          generatedImage.src;
+
+        qrImage.alt =
+          "UPI payment QR";
+
+      }
+
+
+      qrContainer.remove();
+
+    }, 100);
+
+
+  } catch (error) {
+
+    console.error(
+      "QR generation error:",
+      error
+    );
+
+
+    qrContainer.remove();
+
+
+    showMessage(
+      $("topupMsg"),
+      "Could not generate payment QR.",
+      false
+    );
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     CLEAR MESSAGE
+  ------------------------------------------------------- */
+
+
+  if ($("topupMsg")) {
+
+    $("topupMsg").textContent =
+      "";
+
+  }
+
+}
+
+
+
+/* =========================================================
+   TOP-UP PAYMENT REQUEST
+========================================================= */
+
+
+async function submitPaymentRequest(
+  event
+) {
+
+  event.preventDefault();
+
+
+  const amount =
+    currentPaymentAmount;
+
+
+  const reference =
+    currentPaymentReference;
+
+
+  const utr =
+    $("utr")
+      ?.value
+      ?.trim();
+
+
+  const screenshot =
+    $("paymentScreenshot")
+      ?.files
+      ?.[0];
+
+
+  const button =
+    $("submitPayment");
+
+
+  const output =
+    $("topupMsg");
+
+
+
+  /* -------------------------------------------------------
+     VALIDATE PAYMENT
+  ------------------------------------------------------- */
+
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+
+    showMessage(
+      output,
+      "Please generate the payment QR first.",
+      false
+    );
+
+    return;
+
+  }
+
+
+  if (
+    !utr ||
+    utr.length < 4
+  ) {
+
+    showMessage(
+      output,
+      "Enter a valid UTR / transaction ID.",
+      false
+    );
+
+    return;
+
+  }
+
+
+  if (!screenshot) {
+
+    showMessage(
+      output,
+      "Payment screenshot is required.",
+      false
+    );
+
+    return;
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     FILE VALIDATION
+  ------------------------------------------------------- */
+
+
+  const allowedTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp"
+  ];
+
+
+  if (
+    !allowedTypes.includes(
+      screenshot.type
+    )
+  ) {
+
+    showMessage(
+      output,
+      "Only JPG, PNG or WEBP screenshots are allowed.",
+      false
+    );
+
+    return;
+
+  }
+
+
+  if (
+    screenshot.size >
+    8 * 1024 * 1024
+  ) {
+
+    showMessage(
+      output,
+      "Screenshot must be smaller than 8 MB.",
+      false
+    );
+
+    return;
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     AUTH CHECK
+  ------------------------------------------------------- */
+
+
+  if (!me?.uid) {
+
+    showMessage(
+      output,
+      "Please login again.",
+      false
+    );
+
+    return;
+
+  }
+
+
+
+  try {
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        "Submitting...";
 
     }
 
+
+
+    /* -----------------------------------------------------
+       FORM DATA
+    ----------------------------------------------------- */
+
+
+    const formData =
+      new FormData();
+
+
+    formData.append(
+      "userId",
+      me.uid
+    );
+
+
+    formData.append(
+      "userName",
+      me.name ||
+      "Trader"
+    );
+
+
+    formData.append(
+      "userEmail",
+      me.email ||
+      auth.currentUser?.email ||
+      ""
+    );
+
+
+    formData.append(
+      "amount",
+      amount.toFixed(2)
+    );
+
+
+    formData.append(
+      "utr",
+      utr
+    );
+
+
+    formData.append(
+      "paymentReference",
+      reference
+    );
+
+
+    formData.append(
+      "screenshot",
+      screenshot,
+      screenshot.name
+    );
+
+
+
+    /* -----------------------------------------------------
+       SEND TOP-UP REQUEST TO SERVER
+    ----------------------------------------------------- */
+
+
+    const response =
+      await fetch(
+        PAYMENT_SERVER_URL +
+        "/api/payment/add-balance",
+        {
+          method:
+            "POST",
+
+          body:
+            formData
+        }
+      );
+
+
+
+    let result = null;
+
+
+    try {
+
+      result =
+        await response.json();
+
+    } catch {
+
+      result = null;
+
+    }
+
+
+
+    if (
+      !response.ok ||
+      !result?.ok
+    ) {
+
+      throw new Error(
+        result?.message ||
+        "Top-up request failed."
+      );
+
+    }
+
+
+
+    /* -----------------------------------------------------
+       SUCCESS
+    ----------------------------------------------------- */
+
+
+    showMessage(
+      output,
+      "Top-up request submitted successfully. Please wait for admin verification.",
+      true
+    );
+
+
+
+    if ($("utr")) {
+
+      $("utr").value =
+        "";
+
+    }
+
+
+    if ($("paymentScreenshot")) {
+
+      $("paymentScreenshot").value =
+        "";
+
+    }
+
+
+    if ($("paymentReference")) {
+
+      $("paymentReference").textContent =
+        "Request ID: " +
+        (
+          result.requestId ||
+          reference
+        );
+
+    }
+
+
+
+    /*
+     * IMPORTANT:
+     *
+     * Client does NOT add balance.
+     *
+     * Balance is added only after
+     * server-side admin approval.
+     */
+
+  } catch (error) {
+
+    console.error(
+      "Top-up submission error:",
+      error
+    );
+
+
+    showMessage(
+      output,
+      error.message ||
+      "Could not submit top-up request.",
+      false
+    );
+
+  } finally {
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        "Submit Payment Request";
+
+    }
+
+  }
+
+}
+
+
+
+/* =========================================================
+   WITHDRAWAL REQUEST
+========================================================= */
+
+
+async function submitWithdrawal(
+  event
+) {
+
+  event.preventDefault();
+
+
+  const amountInput =
+    $("withdrawAmount");
+
+
+  const upiInput =
+    $("withdrawUpi");
+
+
+  const noteInput =
+    $("withdrawNote");
+
+
+  const output =
+    $("withdrawMsg");
+
+
+  const amount =
+    Number(
+      amountInput?.value
+    );
+
+
+  const upiId =
+    upiInput
+      ?.value
+      ?.trim();
+
+
+  const note =
+    noteInput
+      ?.value
+      ?.trim() ||
+    "";
+
+
+
+  /* -------------------------------------------------------
+     AMOUNT VALIDATION
+  ------------------------------------------------------- */
+
+
+  if (
+    !Number.isFinite(amount) ||
+    amount < MIN_WITHDRAWAL
+  ) {
+
+    showMessage(
+      output,
+      "Minimum withdrawal is ₹50.",
+      false
+    );
+
+    return;
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     UPI VALIDATION
+  ------------------------------------------------------- */
+
+
+  if (
+    !upiId ||
+    upiId.length < 3 ||
+    upiId.length > 100
+  ) {
+
+    showMessage(
+      output,
+      "Please enter a valid UPI ID.",
+      false
+    );
+
+    return;
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     AUTH CHECK
+  ------------------------------------------------------- */
+
+
+  if (!me?.uid) {
+
+    showMessage(
+      output,
+      "Please login again.",
+      false
+    );
+
+    return;
+
+  }
+
+
+
+  try {
+
+    /* -----------------------------------------------------
+       GET CURRENT ACCOUNT BALANCE
+    ----------------------------------------------------- */
+
+
+    const userSnap =
+      await getDoc(
+        doc(
+          db,
+          "users",
+          me.uid
+        )
+      );
+
+
+    if (!userSnap.exists()) {
+
+      throw new Error(
+        "User account not found."
+      );
+
+    }
+
+
+    const userData =
+      userSnap.data();
+
+
+    const balance =
+      Number(
+        userData.balance || 0
+      );
+
+
+
+    /* -----------------------------------------------------
+       CHECK AVAILABLE BALANCE
+    ----------------------------------------------------- */
+
+
+    if (
+      balance < amount
+    ) {
+
+      throw new Error(
+        "Insufficient wallet balance."
+      );
+
+    }
+
+
+
+    /* -----------------------------------------------------
+       KEEP MINIMUM BALANCE
+    ----------------------------------------------------- */
+
+
+    if (
+      balance - amount <
+      MIN_REMAINING_BALANCE
+    ) {
+
+      const maximum =
+        Math.max(
+          0,
+          balance -
+          MIN_REMAINING_BALANCE
+        );
+
+
+      if (
+        maximum <
+        MIN_WITHDRAWAL
+      ) {
+
+        throw new Error(
+          "Your wallet balance must be above ₹100 to withdraw."
+        );
+
+      }
+
+
+      throw new Error(
+        "Maximum withdrawal is " +
+        money(maximum) +
+        ". At least ₹100 must remain."
+      );
+
+    }
+
+
+
+    /* -----------------------------------------------------
+       SUBMIT BUTTON
+    ----------------------------------------------------- */
+
+
+    const button =
+      $("withdrawForm")
+        ?.querySelector(
+          "button[type='submit']"
+        );
+
+
+    if (button) {
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        "Submitting...";
+
+    }
+
+
+
+    /* -----------------------------------------------------
+       SEND WITHDRAWAL REQUEST
+    ----------------------------------------------------- */
+
+
+    const response =
+      await fetch(
+        PAYMENT_SERVER_URL +
+        "/api/payment/withdraw",
+        {
+
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+
+          },
+
+          body:
+            JSON.stringify({
+
+              userId:
+                me.uid,
+
+              userName:
+                me.name ||
+                userData.name ||
+                "Trader",
+
+              userEmail:
+                me.email ||
+                userData.email ||
+                auth.currentUser?.email ||
+                "",
+
+              amount:
+                Number(
+                  amount.toFixed(2)
+                ),
+
+              upiId:
+                upiId,
+
+              note:
+                note
+
+            })
+
+        }
+      );
+
+
+
+    let result = null;
+
+
+    try {
+
+      result =
+        await response.json();
+
+    } catch {
+
+      result = null;
+
+    }
+
+
+
+    if (
+      !response.ok ||
+      !result?.ok
+    ) {
+
+      throw new Error(
+        result?.message ||
+        "Withdrawal request failed."
+      );
+
+    }
+
+
+
+    /* -----------------------------------------------------
+       SUCCESS
+    ----------------------------------------------------- */
+
+
+    showMessage(
+      output,
+      "Withdrawal request submitted successfully. Admin will review it.",
+      true
+    );
+
+
+    if (amountInput) {
+
+      amountInput.value =
+        "";
+
+    }
+
+
+    if (upiInput) {
+
+      upiInput.value =
+        "";
+
+    }
+
+
+    if (noteInput) {
+
+      noteInput.value =
+        "";
+
+    }
+
+
+
+  } catch (error) {
+
+    console.error(
+      "Withdrawal error:",
+      error
+    );
+
+
+    showMessage(
+      output,
+      error.message ||
+      "Withdrawal request failed.",
+      false
+    );
+
+  } finally {
+
+    const button =
+      $("withdrawForm")
+        ?.querySelector(
+          "button[type='submit']"
+        );
+
+
+    if (button) {
+
+      button.disabled =
+        false;
+
+      button.textContent =
+        "Request Withdrawal";
+
+    }
+
+  }
+
+}
+
+
+
+/* =========================================================
+   WALLET REQUEST LISTENERS
+========================================================= */
+
+
+function startWalletListeners() {
+
+  if (!me?.uid) {
     return;
   }
 
 
-  if (!me) {
 
-    if (message) {
-      message.textContent =
-        "Please wait for your account to load.";
+  /* -------------------------------------------------------
+     CLEAN OLD LISTENERS
+  ------------------------------------------------------- */
+
+
+  if (unsubscribeTopups) {
+
+    unsubscribeTopups();
+
+    unsubscribeTopups =
+      null;
+
+  }
+
+
+  if (unsubscribeWithdrawals) {
+
+    unsubscribeWithdrawals();
+
+    unsubscribeWithdrawals =
+      null;
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     TOP-UP REQUESTS
+  ------------------------------------------------------- */
+
+
+  const topupQuery =
+    query(
+      collection(
+        db,
+        "topupRequests"
+      ),
+
+      where(
+        "userId",
+        "==",
+        me.uid
+      )
+    );
+
+
+  unsubscribeTopups =
+    onSnapshot(
+      topupQuery,
+
+      snapshot => {
+
+        topupRequests =
+          snapshot.docs.map(
+            item => ({
+
+              id:
+                item.id,
+
+              ...item.data()
+
+            })
+          );
+
+
+        renderWalletRequests();
+
+      },
+
+      error => {
+
+        console.error(
+          "Top-up listener error:",
+          error
+        );
+
+      }
+    );
+
+
+
+  /* -------------------------------------------------------
+     WITHDRAWAL REQUESTS
+  ------------------------------------------------------- */
+
+
+  const withdrawalQuery =
+    query(
+      collection(
+        db,
+        "withdrawalRequests"
+      ),
+
+      where(
+        "userId",
+        "==",
+        me.uid
+      )
+    );
+
+
+  unsubscribeWithdrawals =
+    onSnapshot(
+      withdrawalQuery,
+
+      snapshot => {
+
+        withdrawalRequests =
+          snapshot.docs.map(
+            item => ({
+
+              id:
+                item.id,
+
+              ...item.data()
+
+            })
+          );
+
+
+        renderWalletRequests();
+
+      },
+
+      error => {
+
+        console.error(
+          "Withdrawal listener error:",
+          error
+        );
+
+      }
+    );
+
+}
+
+
+
+/* =========================================================
+   RENDER WALLET REQUESTS
+========================================================= */
+
+
+function renderWalletRequests() {
+
+  const box =
+    $("walletList");
+
+
+  if (!box) {
+    return;
+  }
+
+
+  const items = [];
+
+
+
+  /* -------------------------------------------------------
+     TOP-UP REQUESTS
+  ------------------------------------------------------- */
+
+
+  topupRequests.forEach(
+    request => {
+
+      items.push({
+
+        date:
+          getDateMs(
+            request.createdAt
+          ),
+
+        type:
+          "Top-up",
+
+        amount:
+          Number(
+            request.amount || 0
+          ),
+
+        status:
+          request.status ||
+          "PENDING",
+
+        id:
+          request.id,
+
+        meta:
+          request.utr
+            ? "UTR: " +
+              request.utr
+            : "Top-up request"
+
+      });
+
     }
+  );
 
+
+
+  /* -------------------------------------------------------
+     WITHDRAWAL REQUESTS
+  ------------------------------------------------------- */
+
+
+  withdrawalRequests.forEach(
+    request => {
+
+      items.push({
+
+        date:
+          getDateMs(
+            request.createdAt
+          ),
+
+        type:
+          "Withdrawal",
+
+        amount:
+          Number(
+            request.amount || 0
+          ),
+
+        status:
+          request.status ||
+          "PENDING",
+
+        id:
+          request.id,
+
+        meta:
+          request.upiId
+            ? "UPI: " +
+              request.upiId
+            : "Withdrawal request"
+
+      });
+
+    }
+  );
+
+
+
+  /* -------------------------------------------------------
+     NEWEST FIRST
+  ------------------------------------------------------- */
+
+
+  items.sort(
+    (a, b) =>
+      b.date -
+      a.date
+  );
+
+
+
+  if (!items.length) {
+
+    box.innerHTML =
+      '<div class="empty">No wallet requests yet.</div>';
+
+    return;
+
+  }
+
+
+
+  /* -------------------------------------------------------
+     HTML
+  ------------------------------------------------------- */
+
+
+  box.innerHTML =
+    items
+      .map(
+        item => {
+
+          const status =
+            String(
+              item.status
+            ).toLowerCase();
+
+
+          const amountText =
+            item.type ===
+            "Withdrawal"
+
+              ? "-" +
+                money(item.amount)
+
+              : "+" +
+                money(item.amount);
+
+
+          return `
+
+            <div class="request-row">
+
+              <div class="request-main">
+
+                <div class="request-title">
+
+                  ${escapeHtml(
+                    item.type
+                  )}
+
+                </div>
+
+
+                <div class="request-meta">
+
+                  ${escapeHtml(
+                    item.meta
+                  )}
+
+                  <br>
+
+                  ${escapeHtml(
+                    formatDate(
+                      item.date
+                    )
+                  )}
+
+                </div>
+
+
+                <span class="status ${escapeHtml(status)}">
+
+                  ${escapeHtml(
+                    item.status
+                  )}
+
+                </span>
+
+              </div>
+
+
+              <div class="request-amount">
+
+                ${escapeHtml(
+                  amountText
+                )}
+
+              </div>
+
+            </div>
+
+          `;
+
+        }
+      )
+      .join("");
+
+}
+
+
+
+/* =========================================================
+   MESSAGE
+========================================================= */
+
+
+function showMessage(
+  element,
+  text,
+  success
+) {
+
+  if (!element) {
+    return;
+  }
+
+
+  element.textContent =
+    text;
+
+
+  element.className =
+    success
+      ? "msg ok"
+      : "msg";
+
+}
+
+
+
+/* =========================================================
+   REALTIME ACCOUNT BALANCE
+========================================================= */
+
+
+function startUserBalanceListener() {
+
+  if (!me?.uid) {
     return;
   }
 
@@ -606,1074 +1732,105 @@ async function trade(side) {
     );
 
 
-  try {
+  if (unsubscribeUser) {
 
-    await runTransaction(
-      db,
-      async (tx) => {
+    unsubscribeUser();
 
-        const userSnap =
-          await tx.get(userRef);
+  }
 
 
-        if (!userSnap.exists()) {
-          throw new Error(
-            "User account not found."
-          );
+  unsubscribeUser =
+    onSnapshot(
+
+      userRef,
+
+      snapshot => {
+
+        if (!snapshot.exists()) {
+          return;
         }
 
 
-        const userData =
-          userSnap.data();
+        const data =
+          snapshot.data();
+
+
+        me = {
+          ...me,
+          ...data
+        };
 
 
         const balance =
           Number(
-            userData.balance || 0
+            data.balance || 0
           );
 
 
-        if (balance < amount) {
-          throw new Error(
-            "Insufficient virtual balance."
-          );
+        const balanceText =
+          money(balance);
+
+
+
+        /* -------------------------------------------------
+           TOP BALANCE
+        ------------------------------------------------- */
+
+
+        if ($("topBalance")) {
+
+          $("topBalance")
+            .textContent =
+            balanceText;
+
         }
 
 
-        const tradeRef =
-          doc(
-            collection(
-              db,
-              "trades"
-            )
-          );
+
+        /* -------------------------------------------------
+           WALLET BALANCE
+        ------------------------------------------------- */
 
 
-        /*
-         * Reserve the virtual trade amount.
-         */
-        tx.update(
-          userRef,
-          {
-            balance:
-              Number(
-                (balance - amount)
-                  .toFixed(2)
-              )
-          }
-        );
+        if ($("walletBalance")) {
 
+          $("walletBalance")
+            .textContent =
+            balanceText;
 
-        /*
-         * Demo market price.
-         */
-        const price =
-          68420.35 +
-          (
-            Math.random() - 0.5
-          ) * 250;
+        }
 
+      },
 
-        tx.set(
-          tradeRef,
-          {
-            userId:
-              me.uid,
+      error => {
 
-            side:
-              side,
-
-            amount:
-              Number(
-                amount.toFixed(2)
-              ),
-
-            price:
-              Number(
-                price.toFixed(2)
-              ),
-
-            status:
-              "OPEN",
-
-            pnl:
-              0,
-
-            platformProfit:
-              0,
-
-            createdAt:
-              serverTimestamp(),
-
-            sessionMinutes:
-              5
-          }
+        console.error(
+          "User balance listener error:",
+          error
         );
 
       }
+
     );
-
-
-    if (message) {
-
-      message.textContent =
-        `${side} opened. Result will appear after 5 minutes.`;
-
-      message.className =
-        "msg ok";
-
-    }
-
-  } catch (error) {
-
-    console.error(
-      "Trade error:",
-      error
-    );
-
-
-    if (message) {
-
-      message.textContent =
-        error.message ||
-        "Trade failed.";
-
-      message.className =
-        "msg";
-
-    }
-
-  }
 
 }
 
 
-/* =========================================================
-   RENDER TRADES
-========================================================= */
-
-function render() {
-
-  const openTrades =
-    rows.filter(
-      (trade) =>
-        trade.status === "OPEN"
-    );
-
-
-  const closedTrades =
-    rows.filter(
-      (trade) =>
-        trade.status === "CLOSED"
-    );
-
-
-  /* Open count */
-
-  if ($("openCount")) {
-
-    $("openCount").textContent =
-      openTrades.length;
-
-  }
-
-
-  /* Total P/L */
-
-  const totalPnl =
-    closedTrades.reduce(
-      (total, trade) =>
-        total +
-        Number(
-          trade.pnl || 0
-        ),
-      0
-    );
-
-
-  if ($("pnl")) {
-
-    $("pnl").textContent =
-      money(totalPnl);
-
-  }
-
-
-  /* ==============================================
-     OPEN TRADES HTML
-  ============================================== */
-
-  const openHtml =
-    openTrades
-      .map((trade) => {
-
-        const created =
-          getDateMs(
-            trade.createdAt
-          );
-
-
-        const elapsed =
-          Date.now() -
-          created;
-
-
-        const remaining =
-          Math.max(
-            0,
-            SESSION - elapsed
-          );
-
-
-        const seconds =
-          Math.ceil(
-            remaining / 1000
-          );
-
-
-        return `
-          <div class="row">
-
-            <span>
-              <b>
-                ${escapeHtml(
-                  trade.side
-                )}
-              </b>
-
-              • ${money(
-                trade.amount
-              )}
-
-              <br>
-
-              <small class="muted">
-                ${money(
-                  trade.price
-                )}
-                •
-                ${seconds}s remaining
-              </small>
-            </span>
-
-            <span class="green">
-              OPEN
-            </span>
-
-          </div>
-        `;
-
-      })
-      .join("");
-
-
-  const emptyOpen =
-    '<div class="empty">No open trades.</div>';
-
-
-  if ($("openTrades")) {
-
-    $("openTrades").innerHTML =
-      openHtml ||
-      emptyOpen;
-
-  }
-
-
-  if ($("tradesList")) {
-
-    $("tradesList").innerHTML =
-      openHtml ||
-      emptyOpen;
-
-  }
-
-
-  /* ==============================================
-     HISTORY
-  ============================================== */
-
-  const historyHtml =
-    closedTrades
-      .map((trade) => {
-
-        const pnl =
-          Number(
-            trade.pnl || 0
-          );
-
-
-        const positive =
-          pnl >= 0;
-
-
-        const cls =
-          positive
-            ? "green"
-            : "red";
-
-
-        const sign =
-          positive
-            ? "+"
-            : "";
-
-
-        const date =
-          trade.closedAt
-            ?.toDate
-            ?.()
-            ?.toLocaleString
-            ?.() ||
-          "Completed";
-
-
-        return `
-          <div class="row">
-
-            <span>
-
-              <b>
-                ${escapeHtml(
-                  trade.side
-                )}
-              </b>
-
-              • ${money(
-                trade.amount
-              )}
-
-              <br>
-
-              <small class="muted">
-                ${escapeHtml(
-                  date
-                )}
-                •
-                ${
-                  positive
-                    ? "PROFIT"
-                    : "LOSS"
-                }
-              </small>
-
-            </span>
-
-            <span class="${cls}">
-              ${sign}${money(pnl)}
-            </span>
-
-          </div>
-        `;
-
-      })
-      .join("");
-
-
-  if ($("historyList")) {
-
-    $("historyList").innerHTML =
-      historyHtml ||
-      '<div class="empty">No completed trades yet.</div>';
-
-  }
-
-}
-
 
 /* =========================================================
-   OFFERS
+   AUTH
 ========================================================= */
 
-async function offers() {
-
-  const box =
-    $("offersList");
-
-  if (!box) {
-    return;
-  }
-
-
-  try {
-
-    const snapshot =
-      await getDocs(
-        collection(
-          db,
-          "offers"
-        )
-      );
-
-
-    box.innerHTML =
-      snapshot.docs
-        .map((item) => {
-
-          const data =
-            item.data();
-
-
-          return `
-            <div class="row">
-
-              <b>
-                🎁
-                ${escapeHtml(
-                  data.title ||
-                  "Offer"
-                )}
-              </b>
-
-              <span>
-                ${escapeHtml(
-                  data.description ||
-                  "Virtual offer"
-                )}
-              </span>
-
-            </div>
-          `;
-
-        })
-        .join("") ||
-      '<div class="empty">No offers available.</div>';
-
-  } catch (error) {
-
-    console.error(
-      "Offers error:",
-      error
-    );
-
-    box.innerHTML =
-      '<div class="empty">Could not load offers.</div>';
-
-  }
-
-}
-
-
-/* =========================================================
-   WALLET ACTIVITY
-========================================================= */
-
-async function wallet() {
-
-  const box =
-    $("walletList");
-
-  if (!box || !me) {
-    return;
-  }
-
-
-  try {
-
-    const walletQuery =
-      query(
-        collection(
-          db,
-          "walletTransactions"
-        ),
-        where(
-          "userId",
-          "==",
-          me.uid
-        )
-      );
-
-
-    const topupQuery =
-      query(
-        collection(
-          db,
-          "topupRequests"
-        ),
-        where(
-          "userId",
-          "==",
-          me.uid
-        )
-      );
-
-
-    const withdrawalQuery =
-      query(
-        collection(
-          db,
-          "withdrawalRequests"
-        ),
-        where(
-          "userId",
-          "==",
-          me.uid
-        )
-      );
-
-
-    const [
-      walletSnapshot,
-      topupSnapshot,
-      withdrawalSnapshot
-    ] = await Promise.all([
-      getDocs(walletQuery),
-      getDocs(topupQuery),
-      getDocs(withdrawalQuery)
-    ]);
-
-
-    const items = [];
-
-
-    /* Wallet transactions */
-
-    walletSnapshot.docs
-      .forEach((docSnap) => {
-
-        const data =
-          docSnap.data();
-
-
-        items.push({
-          date:
-            getDateMs(
-              data.createdAt
-            ),
-
-          html: `
-            <div class="row">
-
-              <span>
-                ${escapeHtml(
-                  data.type ||
-                  "Wallet"
-                )}
-              </span>
-
-              <span class="green">
-                +${money(
-                  data.amount
-                )}
-              </span>
-
-            </div>
-          `
-        });
-
-      });
-
-
-    /* Add balance requests */
-
-    topupSnapshot.docs
-      .forEach((docSnap) => {
-
-        const data =
-          docSnap.data();
-
-
-        items.push({
-          date:
-            getDateMs(
-              data.createdAt
-            ),
-
-          html: `
-            <div class="row">
-
-              <span>
-                Add balance request
-                •
-                ${escapeHtml(
-                  data.status ||
-                  "PENDING"
-                )}
-              </span>
-
-              <span>
-                ${money(
-                  data.amount
-                )}
-              </span>
-
-            </div>
-          `
-        });
-
-      });
-
-
-    /* Withdrawal requests */
-
-    withdrawalSnapshot.docs
-      .forEach((docSnap) => {
-
-        const data =
-          docSnap.data();
-
-
-        items.push({
-          date:
-            getDateMs(
-              data.createdAt
-            ),
-
-          html: `
-            <div class="row">
-
-              <span>
-                ${escapeHtml(
-                  data.type ||
-                  "Wallet"
-                )}
-              </span>
-
-              <span class="green">
-                +${money(
-                  data.amount
-                )}
-              </span>
-
-            </div>
-          `
-        });
-
-      });
-
-
-    /* Add balance requests */
-
-    topupSnapshot.docs
-      .forEach((docSnap) => {
-
-        const data =
-          docSnap.data();
-
-
-        items.push({
-          date:
-            getDateMs(
-              data.createdAt
-            ),
-
-          html: `
-            <div class="row">
-
-              <span>
-                Add balance request
-                •
-                ${escapeHtml(
-                  data.status ||
-                  "PENDING"
-                )}
-              </span>
-
-              <span>
-                ${money(
-                  data.amount
-                )}
-              </span>
-
-            </div>
-          `
-        });
-
-      });
-
-
-    /* Withdrawal requests */
-
-    withdrawalSnapshot.docs
-      .forEach((docSnap) => {
-
-        const data =
-          docSnap.data();
-
-
-        items.push({
-          date:
-            getDateMs(
-              data.createdAt
-            ),
-
-          html: `
-            <div class="row">
-
-              <span>
-                Withdrawal request
-                •
-                ${escapeHtml(
-                  data.status ||
-                  "PENDING"
-                )}
-              </span>
-
-              <span class="red">
-                -${money(
-                  data.amount
-                )}
-              </span>
-
-            </div>
-          `
-        });
-
-      });
-
-
-    /* Newest first */
-
-    items.sort(
-      (a, b) =>
-        b.date - a.date
-    );
-
-
-    box.innerHTML =
-      items
-        .map(
-          (item) =>
-            item.html
-        )
-        .join("") ||
-      '<div class="empty">No wallet activity yet.</div>';
-
-
-  } catch (error) {
-
-    console.error(
-      "Wallet error:",
-      error
-    );
-
-
-    box.innerHTML =
-      '<div class="empty">No wallet activity yet.</div>';
-
-  }
-
-}
-
-
-/* =========================================================
-   ADD DEMO BALANCE REQUEST
-========================================================= */
-
-async function requestTopup() {
-
-  const input =
-    $("topupAmount");
-
-  const output =
-    $("topupMsg");
-
-
-  const amount =
-    Number(
-      input?.value
-    );
-
-
-  if (
-    !Number.isFinite(amount) ||
-    amount <= 0
-  ) {
-
-    if (output) {
-
-      output.textContent =
-        "Enter a positive demo amount.";
-
-      output.className =
-        "msg";
-
-    }
-
-    return;
-  }
-
-
-  try {
-
-    await addDoc(
-      collection(
-        db,
-        "topupRequests"
-      ),
-      {
-        userId:
-          me.uid,
-
-        amount:
-          Number(
-            amount.toFixed(2)
-          ),
-
-        status:
-          "PENDING",
-
-        createdAt:
-          serverTimestamp()
-      }
-    );
-
-
-    if (input) {
-      input.value = "";
-    }
-
-
-    if (output) {
-
-      output.textContent =
-        "Add-balance request submitted for admin review.";
-
-      output.className =
-        "msg ok";
-
-    }
-
-
-    await wallet();
-
-
-  } catch (error) {
-
-    console.error(
-      "Topup error:",
-      error
-    );
-
-
-    if (output) {
-
-      output.textContent =
-        error.message ||
-        "Request failed.";
-
-      output.className =
-        "msg";
-
-    }
-
-  }
-
-}
-
-
-/* =========================================================
-   WITHDRAWAL REQUEST
-========================================================= */
-
-async function requestWithdrawal() {
-
-  const input =
-    $("withdrawAmount");
-
-  const noteInput =
-    $("withdrawNote");
-
-  const output =
-    $("withdrawMsg");
-
-
-  const amount =
-    Number(
-      input?.value
-    );
-
-
-  /*
-   * Minimum withdrawal = ₹50
-   */
-
-  if (
-    !Number.isFinite(amount) ||
-    amount < 50
-  ) {
-
-    if (output) {
-
-      output.textContent =
-        "Minimum withdrawal is ₹50.";
-
-      output.className =
-        "msg";
-
-    }
-
-    return;
-  }
-
-
-  /*
-   * Current Firebase balance
-   */
-
-  const userSnap =
-    await getDoc(
-      doc(
-        db,
-        "users",
-        me.uid
-      )
-    );
-
-
-  if (!userSnap.exists()) {
-
-    if (output) {
-
-      output.textContent =
-        "User account not found.";
-
-    }
-
-    return;
-  }
-
-
-  const balance =
-    Number(
-      userSnap.data().balance || 0
-    );
-
-
-  /*
-   * At least ₹100 must remain.
-   *
-   * Example:
-   * ₹150 balance -> max ₹50 withdrawal
-   * ₹200 balance -> max ₹100 withdrawal
-   */
-
-  const maximumWithdrawal =
-    Math.max(
-      0,
-      balance - 100
-    );
-
-
-  if (
-    amount >
-    maximumWithdrawal
-  ) {
-
-    if (output) {
-
-      if (balance <= 100) {
-
-        output.textContent =
-          "Your wallet balance must be above ₹100 to withdraw.";
-
-      } else {
-
-        output.textContent =
-          `Maximum withdrawal from your current balance is ${money(maximumWithdrawal)}. At least ₹100 must remain in your wallet.`;
-
-      }
-
-      output.className =
-        "msg";
-
-    }
-
-    return;
-  }
-
-
-  try {
-
-    await addDoc(
-      collection(
-        db,
-        "withdrawalRequests"
-      ),
-      {
-        userId:
-          me.uid,
-
-        amount:
-          Number(
-            amount.toFixed(2)
-          ),
-
-        note:
-          noteInput?.value?.trim() ||
-          "",
-
-        status:
-          "PENDING",
-
-        createdAt:
-          serverTimestamp()
-      }
-    );
-
-
-    if (input) {
-      input.value = "";
-    }
-
-
-    if (noteInput) {
-      noteInput.value = "";
-    }
-
-
-    if (output) {
-
-      output.textContent =
-        "Withdrawal request submitted for admin review.";
-
-      output.className =
-        "msg ok";
-
-    }
-
-
-    await wallet();
-
-
-  } catch (error) {
-
-    console.error(
-      "Withdrawal error:",
-      error
-    );
-
-
-    if (output) {
-
-      output.textContent =
-        error.message ||
-        "Withdrawal request failed.";
-
-      output.className =
-        "msg";
-
-    }
-
-  }
-
-}
-
-
-/* =========================================================
-   AUTH + FIREBASE
-========================================================= */
 
 onAuthStateChanged(
   auth,
-  async (user) => {
 
-    nav();
+  async user => {
 
+    /* -----------------------------------------------------
+       NOT LOGGED IN
+    ----------------------------------------------------- */
 
-    /*
-     * Not logged in
-     */
 
     if (!user) {
 
@@ -1681,27 +1838,17 @@ onAuthStateChanged(
         "login.html";
 
       return;
+
     }
 
-
-    /*
-     * Admin should use the
-     * separate Admin site.
-     */
-
-    if (
-      user.email?.toLowerCase() ===
-      ADMIN.toLowerCase()
-    ) {
-
-      location.href =
-        "../ADMIN_SITE/login.html";
-
-      return;
-    }
 
 
     try {
+
+      /* ---------------------------------------------------
+         GET USER PROFILE
+      --------------------------------------------------- */
+
 
       const userRef =
         doc(
@@ -1725,6 +1872,7 @@ onAuthStateChanged(
           "login.html";
 
         return;
+
       }
 
 
@@ -1732,13 +1880,15 @@ onAuthStateChanged(
         userSnap.data();
 
 
-      /*
-       * Disabled users cannot use
-       * the demo platform.
-       */
+
+      /* ---------------------------------------------------
+         DISABLED ACCOUNT
+      --------------------------------------------------- */
+
 
       if (
-        userData.active === false
+        userData.active ===
+        false
       ) {
 
         await signOut(auth);
@@ -1747,411 +1897,56 @@ onAuthStateChanged(
           "login.html";
 
         return;
+
       }
 
 
-      /*
-       * Current user object
-       */
+
+      /* ---------------------------------------------------
+         CURRENT USER
+      --------------------------------------------------- */
+
 
       me = {
+
         uid:
           user.uid,
 
+        email:
+          user.email ||
+          userData.email ||
+          "",
+
         ...userData
+
       };
 
 
-      /* ==============================================
-         USER NAME
-      ============================================== */
 
-      if ($("userName")) {
+      /* ---------------------------------------------------
+         START REALTIME BALANCE
+      --------------------------------------------------- */
 
-        $("userName").textContent =
-          me.name ||
-          "Trader";
 
-      }
+      startUserBalanceListener();
 
 
-      if ($("settingName")) {
 
-        $("settingName").value =
-          me.name ||
-          "";
+      /* ---------------------------------------------------
+         START REQUEST LISTENERS
+      --------------------------------------------------- */
 
-      }
 
-
-      if ($("settingEmail")) {
-
-        $("settingEmail").value =
-          me.email ||
-          user.email ||
-          "";
-
-      }
-
-
-      /* ==============================================
-         REALTIME USER BALANCE
-      ============================================== */
-
-      unsubscribeUser =
-        onSnapshot(
-          userRef,
-          (snapshot) => {
-
-            if (!snapshot.exists()) {
-              return;
-            }
-
-
-            const data =
-              snapshot.data();
-
-
-            /*
-             * IMPORTANT:
-             * Keep me.balance updated.
-             */
-
-            me = {
-              ...me,
-              ...data
-            };
-
-
-            const balanceText =
-              money(
-                data.balance || 0
-              );
-
-
-            if ($("topBalance")) {
-
-              $("topBalance")
-                .textContent =
-                balanceText;
-
-            }
-
-
-            if ($("balance")) {
-
-              $("balance")
-                .textContent =
-                balanceText;
-
-            }
-
-
-            if ($("walletBalance")) {
-
-              $("walletBalance")
-                .textContent =
-                balanceText;
-
-            }
-
-          },
-          (error) => {
-
-            console.error(
-              "User snapshot error:",
-              error
-            );
-
-          }
-        );
-
-
-      /* ==============================================
-         TRADES
-
-         We intentionally do NOT use orderBy()
-         here, so a Firebase composite index
-         is not required.
-      ============================================== */
-
-      const tradesQuery =
-        query(
-          collection(
-            db,
-            "trades"
-          ),
-          where(
-            "userId",
-            "==",
-            user.uid
-          )
-        );
-
-
-      unsubscribeTrades =
-        onSnapshot(
-          tradesQuery,
-          (snapshot) => {
-
-            rows =
-              snapshot.docs
-                .map(
-                  (docSnap) => ({
-                    id:
-                      docSnap.id,
-
-                    ...docSnap.data()
-                  })
-                )
-                .sort(
-                  (a, b) =>
-                    getDateMs(
-                      b.createdAt
-                    ) -
-                    getDateMs(
-                      a.createdAt
-                    )
-                );
-
-
-            /*
-             * Check expired trades.
-             */
-
-            rows
-              .filter(
-                (trade) =>
-                  trade.status ===
-                  "OPEN"
-              )
-              .forEach(
-                closeDue
-              );
-
-
-            render();
-
-          },
-          (error) => {
-
-            console.error(
-              "Trades snapshot error:",
-              error
-            );
-
-          }
-        );
-
-
-      /* ==============================================
-         BUTTONS
-      ============================================== */
-
-      $("buy")?.addEventListener(
-        "click",
-        () => trade("BUY")
-      );
-
-
-      $("sell")?.addEventListener(
-        "click",
-        () => trade("SELL")
-      );
-
-
-      $("refreshOffers")
-        ?.addEventListener(
-          "click",
-          offers
-        );
-
-
-      $("topupForm")
-        ?.addEventListener(
-          "submit",
-          (event) => {
-
-            event.preventDefault();
-
-            requestTopup();
-
-          }
-        );
-
-
-      $("withdrawForm")
-        ?.addEventListener(
-          "submit",
-          (event) => {
-
-            event.preventDefault();
-
-            requestWithdrawal();
-
-          }
-        );
-
-
-      /* ==============================================
-         REFERRAL
-      ============================================== */
-
-      if ($("refLink")) {
-
-        const referralCode =
-          me.referralCode ||
-          "";
-
-
-        const referralUrl =
-          location.origin +
-          location.pathname
-            .replace(
-              /[^/]+$/,
-              "register.html"
-            ) +
-          "?ref=" +
-          encodeURIComponent(
-            referralCode
-          );
-
-
-        $("refLink").value =
-          referralUrl;
-
-
-        if ($("refStats")) {
-
-          $("refStats").textContent =
-            `Code: ${referralCode || "-"} • Referrals: ${Number(me.referralCount || 0)}`;
-
-        }
-
-
-        $("copyRef")
-          ?.addEventListener(
-            "click",
-            async () => {
-
-              try {
-
-                await navigator.clipboard.writeText(
-                  referralUrl
-                );
-
-
-                const oldText =
-                  $("copyRef")
-                    .textContent;
-
-
-                $("copyRef")
-                  .textContent =
-                  "Copied!";
-
-
-                setTimeout(
-                  () => {
-
-                    if ($("copyRef")) {
-
-                      $("copyRef")
-                        .textContent =
-                        oldText ||
-                        "Copy";
-
-                    }
-
-                  },
-                  1500
-                );
-
-              } catch (error) {
-
-                console.error(
-                  "Copy error:",
-                  error
-                );
-
-              }
-
-            }
-          );
-
-      }
-
-
-      /* ==============================================
-         INITIAL LOAD
-      ============================================== */
-
-      await offers();
-
-      await wallet();
-
-
-      /* ==============================================
-         OPEN TRADE COUNTDOWN
-      ============================================== */
-
-      setInterval(
-        () => {
-
-          rows
-            .filter(
-              (trade) =>
-                trade.status ===
-                "OPEN"
-            )
-            .forEach(
-              closeDue
-            );
-
-
-          render();
-
-        },
-        1000
-      );
-
-
-      /* ==============================================
-         MARKET PRICE
-
-         This is a demo display price.
-         The chart.js handles the animated chart.
-      ============================================== */
-
-      setInterval(
-        () => {
-
-          const price =
-            68420.35 +
-            (
-              Math.random() - 0.5
-            ) * 250;
-
-
-          if ($("marketPrice")) {
-
-            $("marketPrice")
-              .textContent =
-              money(price);
-
-          }
-
-        },
-        1000
-      );
+      startWalletListeners();
 
 
     } catch (error) {
 
       console.error(
-        "Dashboard initialization error:",
+        "Wallet initialization error:",
         error
       );
+
 
       await signOut(auth);
 
@@ -2161,4 +1956,148 @@ onAuthStateChanged(
     }
 
   }
+);
+
+
+
+/* =========================================================
+   BUTTON EVENTS
+========================================================= */
+
+
+$("generateQr")
+  ?.addEventListener(
+    "click",
+    generatePaymentQr
+  );
+
+
+
+$("paymentSubmitForm")
+  ?.addEventListener(
+    "submit",
+    submitPaymentRequest
+  );
+
+
+
+$("withdrawForm")
+  ?.addEventListener(
+    "submit",
+    submitWithdrawal
+  );
+
+
+
+$("logout")
+  ?.addEventListener(
+    "click",
+
+    async () => {
+
+      try {
+
+        await signOut(auth);
+
+        location.href =
+          "login.html";
+
+      } catch (error) {
+
+        console.error(
+          "Logout error:",
+          error
+        );
+
+      }
+
+    }
+
+  );
+
+
+
+/* =========================================================
+   TOP-UP AMOUNT CHANGE
+========================================================= */
+
+
+$("topupAmount")
+  ?.addEventListener(
+
+    "input",
+
+    () => {
+
+      const value =
+        Number(
+          $("topupAmount")
+            ?.value
+        );
+
+
+      if (
+        !Number.isFinite(value) ||
+        value <= 0
+      ) {
+
+        const paymentBox =
+          $("paymentBox");
+
+
+        if (paymentBox) {
+
+          paymentBox.style.display =
+            "none";
+
+        }
+
+
+        currentPaymentAmount =
+          0;
+
+
+        currentPaymentReference =
+          "";
+
+      }
+
+    }
+
+  );
+
+
+
+/* =========================================================
+   CLEANUP
+========================================================= */
+
+
+window.addEventListener(
+  "beforeunload",
+
+  () => {
+
+    if (unsubscribeUser) {
+
+      unsubscribeUser();
+
+    }
+
+
+    if (unsubscribeTopups) {
+
+      unsubscribeTopups();
+
+    }
+
+
+    if (unsubscribeWithdrawals) {
+
+      unsubscribeWithdrawals();
+
+    }
+
+  }
+
 );

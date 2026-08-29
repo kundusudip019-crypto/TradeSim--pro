@@ -1,3 +1,7 @@
+// ============================================================
+// TradeSim Pro - Secure Payment / Admin API Server
+// ============================================================
+
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -7,242 +11,733 @@ import admin from "firebase-admin";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 10000;
 
-app.use(cors({
-  origin: true,
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+const PORT = Number(process.env.PORT || 10000);
 
-app.use(express.json());
+const ADMIN_EMAIL =
+  String(process.env.ADMIN_EMAIL || "kundusudip019@gmail.com")
+    .trim()
+    .toLowerCase();
 
-/* =====================================================
-   FIREBASE ADMIN
-===================================================== */
+
+// ============================================================
+// FIREBASE ADMIN
+// ============================================================
 
 let db = null;
 
 try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+    throw new Error(
+      "FIREBASE_SERVICE_ACCOUNT is not configured."
     );
-
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-
-    db = admin.firestore();
-
-    console.log("Firebase Admin connected.");
-  } else {
-    console.log("Firebase service account not configured yet.");
   }
+
+  const serviceAccount =
+    JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+  admin.initializeApp({
+    credential:
+      admin.credential.cert(serviceAccount)
+  });
+
+  db = admin.firestore();
+
+  console.log("Firebase Admin connected.");
+
 } catch (error) {
-  console.error("Firebase initialization error:", error.message);
+
+  console.error(
+    "Firebase initialization error:",
+    error.message
+  );
+
 }
 
 
-/* =====================================================
-   MULTER
-   Screenshot temporarily stored in memory.
-   No Firebase Storage required.
-===================================================== */
+// ============================================================
+// CORS
+// ============================================================
+
+const allowedOrigins = String(
+  process.env.ALLOWED_ORIGINS || ""
+)
+  .split(",")
+  .map(x => x.trim())
+  .filter(Boolean);
+
+
+app.use(
+  cors({
+    origin(origin, callback) {
+
+      // Allow requests without browser Origin header
+      // such as health checks / server-to-server.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (
+        allowedOrigins.length === 0 ||
+        allowedOrigins.includes(origin)
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(
+        new Error("Origin not allowed.")
+      );
+
+    },
+
+    methods: ["GET", "POST"],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization"
+    ],
+
+    credentials: false
+  })
+);
+
+
+// ============================================================
+// BODY PARSER
+// ============================================================
+
+app.use(
+  express.json({
+    limit: "200kb"
+  })
+);
+
+
+// ============================================================
+// MULTER
+// ============================================================
 
 const upload = multer({
-  storage: multer.memoryStorage(),
+
+  storage:
+    multer.memoryStorage(),
 
   limits: {
-    fileSize: 8 * 1024 * 1024
+    fileSize:
+      8 * 1024 * 1024
   },
 
-  fileFilter: (req, file, cb) => {
-    const allowed = [
-      "image/jpeg",
-      "image/png",
-      "image/webp"
-    ];
+  fileFilter:
+    (req, file, cb) => {
 
-    if (!allowed.includes(file.mimetype)) {
-      return cb(
-        new Error("Only JPG, PNG or WEBP screenshots are allowed.")
-      );
+      const allowed = [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+      ];
+
+      if (
+        !allowed.includes(
+          file.mimetype
+        )
+      ) {
+
+        return cb(
+          new Error(
+            "Only JPG, PNG or WEBP screenshots are allowed."
+          )
+        );
+
+      }
+
+      cb(null, true);
+
     }
 
-    cb(null, true);
-  }
 });
 
 
-/* =====================================================
-   TELEGRAM
-===================================================== */
+// ============================================================
+// HELPERS
+// ============================================================
 
-async function telegramMessage(text) {
+function escapeHtml(value) {
 
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 
-  if (!token || !chatId) {
-    console.log("Telegram credentials not configured.");
-    return;
+}
+
+
+function cleanString(
+  value,
+  maxLength = 200
+) {
+
+  return String(value ?? "")
+    .trim()
+    .slice(0, maxLength);
+
+}
+
+
+function money(value) {
+
+  return Number(value || 0)
+    .toFixed(2);
+
+}
+
+
+function isValidAmount(
+  amount,
+  minimum = 0,
+  maximum = 100000000
+) {
+
+  const n =
+    Number(amount);
+
+  return (
+    Number.isFinite(n) &&
+    n >= minimum &&
+    n <= maximum
+  );
+
+}
+
+
+// ============================================================
+// AUTHENTICATION
+//
+// Client must send:
+//
+// Authorization: Bearer FIREBASE_ID_TOKEN
+//
+// The server verifies the token using Firebase Admin SDK.
+// ============================================================
+
+async function verifyFirebaseToken(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const header =
+      req.headers.authorization || "";
+
+    if (
+      !header.startsWith("Bearer ")
+    ) {
+
+      return res.status(401).json({
+        ok: false,
+        message:
+          "Authentication required."
+      });
+
+    }
+
+    const idToken =
+      header.slice(7).trim();
+
+    if (!idToken) {
+
+      return res.status(401).json({
+        ok: false,
+        message:
+          "Invalid authentication token."
+      });
+
+    }
+
+    const decoded =
+      await admin
+        .auth()
+        .verifyIdToken(idToken);
+
+    req.user =
+      decoded;
+
+    next();
+
+  } catch (error) {
+
+    console.error(
+      "Authentication error:",
+      error.message
+    );
+
+    return res.status(401).json({
+      ok: false,
+      message:
+        "Authentication failed."
+    });
+
   }
+
+}
+
+
+// ============================================================
+// ADMIN AUTHORIZATION
+// ============================================================
+
+async function requireAdmin(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    if (!req.user) {
+
+      return res.status(401).json({
+        ok: false,
+        message:
+          "Authentication required."
+      });
+
+    }
+
+    const email =
+      String(
+        req.user.email || ""
+      )
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      email !== ADMIN_EMAIL
+    ) {
+
+      return res.status(403).json({
+        ok: false,
+        message:
+          "Admin access denied."
+      });
+
+    }
+
+    /*
+     * Extra check:
+     * Verify the admin user document too.
+     */
+
+    if (db) {
+
+      const adminUserRef =
+        db.collection("users")
+          .doc(req.user.uid);
+
+      const adminUserSnap =
+        await adminUserRef.get();
+
+      if (
+        adminUserSnap.exists
+      ) {
+
+        const data =
+          adminUserSnap.data();
+
+        /*
+         * If account explicitly has
+         * active=false, deny access.
+         */
+
+        if (
+          data.active === false
+        ) {
+
+          return res.status(403).json({
+            ok: false,
+            message:
+              "Admin account is disabled."
+          });
+
+        }
+
+      }
+
+    }
+
+    next();
+
+  } catch (error) {
+
+    console.error(
+      "Admin authorization error:",
+      error.message
+    );
+
+    return res.status(403).json({
+      ok: false,
+      message:
+        "Admin authorization failed."
+    });
+
+  }
+
+}
+
+
+// ============================================================
+// TELEGRAM
+// ============================================================
+
+async function telegramMessage(
+  text
+) {
+
+  const token =
+    process.env.TELEGRAM_BOT_TOKEN;
+
+  const chatId =
+    process.env.TELEGRAM_CHAT_ID;
+
+
+  if (
+    !token ||
+    !chatId
+  ) {
+
+    console.log(
+      "Telegram credentials not configured."
+    );
+
+    return;
+
+  }
+
 
   const url =
     `https://api.telegram.org/bot${token}/sendMessage`;
 
-  const response = await fetch(url, {
-    method: "POST",
 
-    headers: {
-      "Content-Type": "application/json"
-    },
+  const response =
+    await fetch(
+      url,
+      {
+        method: "POST",
 
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML"
-    })
-  });
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify({
+            chat_id:
+              chatId,
+
+            text,
+
+            parse_mode:
+              "HTML"
+          })
+      }
+    );
+
 
   if (!response.ok) {
+
+    const body =
+      await response.text();
+
     throw new Error(
-      `Telegram error: ${response.status}`
+      `Telegram error: ${response.status} ${body}`
     );
+
   }
+
 }
 
 
-async function telegramPhoto(file, caption) {
+async function telegramPhoto(
+  file,
+  caption
+) {
 
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const token =
+    process.env.TELEGRAM_BOT_TOKEN;
 
-  if (!token || !chatId) {
-    console.log("Telegram credentials not configured.");
+  const chatId =
+    process.env.TELEGRAM_CHAT_ID;
+
+
+  if (
+    !token ||
+    !chatId
+  ) {
+
+    console.log(
+      "Telegram credentials not configured."
+    );
+
     return;
+
   }
 
-  const form = new FormData();
 
-  form.append("chat_id", chatId);
-  form.append("caption", caption);
-  form.append("parse_mode", "HTML");
+  const form =
+    new FormData();
 
-  const blob = new Blob(
-    [file.buffer],
-    { type: file.mimetype }
+
+  form.append(
+    "chat_id",
+    chatId
   );
+
+  form.append(
+    "caption",
+    caption
+  );
+
+  form.append(
+    "parse_mode",
+    "HTML"
+  );
+
+
+  const blob =
+    new Blob(
+      [file.buffer],
+      {
+        type:
+          file.mimetype
+      }
+    );
+
 
   form.append(
     "photo",
     blob,
-    file.originalname || "payment-screenshot.jpg"
+    file.originalname ||
+      "payment-screenshot.jpg"
   );
+
 
   const url =
     `https://api.telegram.org/bot${token}/sendPhoto`;
 
-  const response = await fetch(url, {
-    method: "POST",
-    body: form
-  });
+
+  const response =
+    await fetch(
+      url,
+      {
+        method: "POST",
+        body: form
+      }
+    );
+
 
   if (!response.ok) {
+
+    const body =
+      await response.text();
+
     throw new Error(
-      `Telegram photo error: ${response.status}`
+      `Telegram photo error: ${response.status} ${body}`
     );
+
   }
+
 }
 
 
-/* =====================================================
-   HEALTH CHECK
-===================================================== */
+// ============================================================
+// HEALTH CHECK
+// ============================================================
 
-app.get("/", (req, res) => {
+app.get(
+  "/",
+  (req, res) => {
 
-  res.json({
-    ok: true,
-    service: "TradeSim Pro Payment Server",
-    status: "running"
-  });
+    res.json({
+      ok: true,
+      service:
+        "TradeSim Pro Payment Server",
+      status:
+        "running"
+    });
 
-});
+  }
+);
 
 
-/* =====================================================
-   ADD BALANCE REQUEST
-===================================================== */
+// ============================================================
+// ADD BALANCE REQUEST
+// ============================================================
 
 app.post(
   "/api/payment/add-balance",
+
+  verifyFirebaseToken,
+
   upload.single("screenshot"),
+
   async (req, res) => {
 
     try {
 
       if (!db) {
+
         return res.status(500).json({
           ok: false,
-          message: "Firebase backend is not configured."
+          message:
+            "Firebase backend is not configured."
         });
+
       }
 
-      const {
-        userId,
-        userName,
-        userEmail,
-        amount,
-        utr
-      } = req.body;
+
+      /*
+       * IMPORTANT:
+       *
+       * Do NOT trust userId from req.body.
+       *
+       * UID comes from verified Firebase token.
+       */
+
+      const userId =
+        req.user.uid;
 
 
-      const numericAmount = Number(amount);
+      const userName =
+        cleanString(
+          req.body.userName,
+          100
+        );
+
+      const userEmail =
+        cleanString(
+          req.body.userEmail,
+          150
+        );
 
 
-      if (!userId) {
+      const numericAmount =
+        Number(
+          req.body.amount
+        );
+
+
+      const utr =
+        cleanString(
+          req.body.utr,
+          100
+        );
+
+
+      // ----------------------------
+      // Validate amount
+      // ----------------------------
+
+      if (
+        !isValidAmount(
+          numericAmount,
+          1,
+          1000000
+        )
+      ) {
+
         return res.status(400).json({
           ok: false,
-          message: "User ID is required."
+          message:
+            "Invalid payment amount."
         });
+
       }
+
+
+      // ----------------------------
+      // Validate UTR
+      // ----------------------------
+
+      if (
+        utr.length < 4
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          message:
+            "UTR / transaction ID is required."
+        });
+
+      }
+
+
+      // ----------------------------
+      // Screenshot
+      // ----------------------------
+
+      if (!req.file) {
+
+        return res.status(400).json({
+          ok: false,
+          message:
+            "Payment screenshot is required."
+        });
+
+      }
+
+
+      // ----------------------------
+      // Verify user exists
+      // ----------------------------
+
+      const userRef =
+        db.collection("users")
+          .doc(userId);
+
+      const userSnap =
+        await userRef.get();
+
+
+      if (!userSnap.exists) {
+
+        return res.status(404).json({
+          ok: false,
+          message:
+            "User account not found."
+        });
+
+      }
+
+
+      const userData =
+        userSnap.data();
 
 
       if (
-        !Number.isFinite(numericAmount) ||
-        numericAmount <= 0
+        userData.active === false
       ) {
-        return res.status(400).json({
+
+        return res.status(403).json({
           ok: false,
-          message: "Invalid payment amount."
+          message:
+            "User account is disabled."
         });
+
       }
 
 
-      if (!utr || String(utr).trim().length < 4) {
-        return res.status(400).json({
-          ok: false,
-          message: "UTR / transaction ID is required."
-        });
-      }
-
-
-      if (!req.file) {
-        return res.status(400).json({
-          ok: false,
-          message: "Payment screenshot is required."
-        });
-      }
-
-
-      /* ---------------------------------------------
-         Save request in Firestore
-      --------------------------------------------- */
+      // ----------------------------
+      // Create request
+      // ----------------------------
 
       const requestRef =
-        db.collection("topupRequests").doc();
+        db.collection(
+          "topupRequests"
+        ).doc();
 
 
       await requestRef.set({
@@ -250,40 +745,70 @@ app.post(
         userId,
 
         userName:
-          String(userName || "").slice(0, 100),
+          userName ||
+          cleanString(
+            userData.name,
+            100
+          ),
 
         userEmail:
-          String(userEmail || "").slice(0, 150),
+          userEmail ||
+          cleanString(
+            userData.email ||
+            req.user.email ||
+            "",
+            150
+          ),
 
         amount:
-          Number(numericAmount.toFixed(2)),
+          Number(
+            numericAmount.toFixed(2)
+          ),
 
-        utr:
-          String(utr).trim().slice(0, 100),
+        utr,
 
         status:
           "PENDING",
 
         screenshotSentToTelegram:
-          true,
+          false,
 
         createdAt:
-          admin.firestore.FieldValue.serverTimestamp()
+          admin.firestore
+            .FieldValue
+            .serverTimestamp()
 
       });
 
 
-      /* ---------------------------------------------
-         Telegram notification
-      --------------------------------------------- */
+      // ----------------------------
+      // Telegram
+      // ----------------------------
 
-      const caption = `
+      const telegramCaption = `
+
 <b>💰 NEW ADD BALANCE REQUEST</b>
 
-👤 <b>User:</b> ${escapeHtml(userName || "Unknown")}
-📧 <b>Email:</b> ${escapeHtml(userEmail || "Unknown")}
-💵 <b>Amount:</b> ₹${numericAmount.toFixed(2)}
-🔢 <b>UTR:</b> ${escapeHtml(utr)}
+👤 <b>User:</b> ${escapeHtml(
+        userName ||
+        userData.name ||
+        "Unknown"
+      )}
+
+📧 <b>Email:</b> ${escapeHtml(
+        userEmail ||
+        userData.email ||
+        req.user.email ||
+        "Unknown"
+      )}
+
+💵 <b>Amount:</b> ₹${money(
+        numericAmount
+      )}
+
+🔢 <b>UTR:</b> ${escapeHtml(
+        utr
+      )}
 
 🆔 <b>Request ID:</b>
 <code>${requestRef.id}</code>
@@ -294,10 +819,32 @@ Please verify the payment before approving.
 `;
 
 
-      await telegramPhoto(
-        req.file,
-        caption
-      );
+      try {
+
+        await telegramPhoto(
+          req.file,
+          telegramCaption
+        );
+
+
+        await requestRef.update({
+          screenshotSentToTelegram:
+            true
+        });
+
+      } catch (telegramError) {
+
+        console.error(
+          "Telegram error:",
+          telegramError.message
+        );
+
+        /*
+         * Request remains in Firestore.
+         * Admin can still see it.
+         */
+
+      }
 
 
       return res.json({
@@ -311,6 +858,7 @@ Please verify the payment before approving.
           requestRef.id
 
       });
+
 
     } catch (error) {
 
@@ -335,87 +883,135 @@ Please verify the payment before approving.
 );
 
 
-/* =====================================================
-   WITHDRAWAL REQUEST
-===================================================== */
+// ============================================================
+// WITHDRAWAL REQUEST
+// ============================================================
 
 app.post(
   "/api/payment/withdraw",
+
+  verifyFirebaseToken,
+
   async (req, res) => {
 
     try {
 
       if (!db) {
+
         return res.status(500).json({
           ok: false,
-          message: "Firebase backend is not configured."
+          message:
+            "Firebase backend is not configured."
         });
+
       }
 
 
-      const {
-        userId,
-        userName,
-        userEmail,
-        amount,
-        upiId
-      } = req.body;
+      /*
+       * UID comes from verified token.
+       */
+
+      const userId =
+        req.user.uid;
+
+
+      const userName =
+        cleanString(
+          req.body.userName,
+          100
+        );
+
+
+      const userEmail =
+        cleanString(
+          req.body.userEmail,
+          150
+        );
 
 
       const numericAmount =
-        Number(amount);
+        Number(
+          req.body.amount
+        );
 
 
       const cleanUpi =
-        String(upiId || "").trim();
+        cleanString(
+          req.body.upiId,
+          100
+        );
 
 
-      if (!userId) {
+      // ----------------------------
+      // Amount validation
+      // ----------------------------
+
+      if (
+        !isValidAmount(
+          numericAmount,
+          50,
+          1000000
+        )
+      ) {
+
         return res.status(400).json({
           ok: false,
-          message: "User ID is required."
+          message:
+            "Minimum withdrawal is ₹50."
         });
+
       }
+
+
+      // ----------------------------
+      // UPI validation
+      // ----------------------------
+
+      /*
+       * Basic UPI format validation.
+       * This is NOT proof that the UPI exists.
+       */
+
+      const upiRegex =
+        /^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$/;
 
 
       if (
-        !Number.isFinite(numericAmount) ||
-        numericAmount < 50
+        !upiRegex.test(
+          cleanUpi
+        )
       ) {
+
         return res.status(400).json({
           ok: false,
-          message: "Minimum withdrawal is ₹50."
+          message:
+            "Please enter a valid UPI ID."
         });
+
       }
 
 
-      if (
-        cleanUpi.length < 3 ||
-        cleanUpi.length > 100
-      ) {
-        return res.status(400).json({
-          ok: false,
-          message: "Please enter a valid UPI ID."
-        });
-      }
-
-
-      /* ---------------------------------------------
-         Check user wallet
-      --------------------------------------------- */
+      // ----------------------------
+      // User
+      // ----------------------------
 
       const userRef =
-        db.collection("users").doc(userId);
+        db.collection("users")
+          .doc(userId);
+
 
       const userSnap =
         await userRef.get();
 
 
       if (!userSnap.exists) {
+
         return res.status(404).json({
           ok: false,
-          message: "User account not found."
+          message:
+            "User account not found."
         });
+
       }
 
 
@@ -423,33 +1019,65 @@ app.post(
         userSnap.data();
 
 
-      const balance =
-        Number(userData.balance || 0);
+      if (
+        userData.active === false
+      ) {
 
-
-      if (balance < numericAmount) {
-        return res.status(400).json({
+        return res.status(403).json({
           ok: false,
-          message: "Insufficient virtual balance."
+          message:
+            "User account is disabled."
         });
+
       }
 
 
-      if (balance - numericAmount < 100) {
+      const balance =
+        Number(
+          userData.balance || 0
+        );
+
+
+      // ----------------------------
+      // Balance validation
+      // ----------------------------
+
+      if (
+        balance < numericAmount
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          message:
+            "Insufficient virtual balance."
+        });
+
+      }
+
+
+      if (
+        balance -
+          numericAmount <
+        100
+      ) {
+
         return res.status(400).json({
           ok: false,
           message:
             "You must keep at least ₹100 in your wallet."
         });
+
       }
 
 
-      /* ---------------------------------------------
-         Create withdrawal request
-      --------------------------------------------- */
+      // ----------------------------
+      // Create request
+      // ----------------------------
 
       const requestRef =
-        db.collection("withdrawalRequests").doc();
+        db.collection(
+          "withdrawalRequests"
+        ).doc();
 
 
       await requestRef.set({
@@ -457,18 +1085,25 @@ app.post(
         userId,
 
         userName:
-          String(userName || userData.name || "")
-            .slice(0, 100),
+          userName ||
+          cleanString(
+            userData.name,
+            100
+          ),
 
         userEmail:
-          String(
-            userEmail ||
+          userEmail ||
+          cleanString(
             userData.email ||
-            ""
-          ).slice(0, 150),
+            req.user.email ||
+            "",
+            150
+          ),
 
         amount:
-          Number(numericAmount.toFixed(2)),
+          Number(
+            numericAmount.toFixed(2)
+          ),
 
         upiId:
           cleanUpi,
@@ -477,22 +1112,42 @@ app.post(
           "PENDING",
 
         createdAt:
-          admin.firestore.FieldValue.serverTimestamp()
+          admin.firestore
+            .FieldValue
+            .serverTimestamp()
 
       });
 
 
-      /* ---------------------------------------------
-         Telegram notification
-      --------------------------------------------- */
+      // ----------------------------
+      // Telegram
+      // ----------------------------
 
-      const text = `
+      const telegramText = `
+
 <b>🏦 NEW WITHDRAWAL REQUEST</b>
 
-👤 <b>User:</b> ${escapeHtml(userName || userData.name || "Unknown")}
-📧 <b>Email:</b> ${escapeHtml(userEmail || userData.email || "Unknown")}
-💵 <b>Amount:</b> ₹${numericAmount.toFixed(2)}
-💳 <b>UPI ID:</b> <code>${escapeHtml(cleanUpi)}</code>
+👤 <b>User:</b> ${escapeHtml(
+        userName ||
+        userData.name ||
+        "Unknown"
+      )}
+
+📧 <b>Email:</b> ${escapeHtml(
+        userEmail ||
+        userData.email ||
+        req.user.email ||
+        "Unknown"
+      )}
+
+💵 <b>Amount:</b> ₹${money(
+        numericAmount
+      )}
+
+💳 <b>UPI ID:</b>
+<code>${escapeHtml(
+        cleanUpi
+      )}</code>
 
 🆔 <b>Request ID:</b>
 <code>${requestRef.id}</code>
@@ -503,7 +1158,20 @@ Admin should manually verify/pay the withdrawal before marking it successful.
 `;
 
 
-      await telegramMessage(text);
+      try {
+
+        await telegramMessage(
+          telegramText
+        );
+
+      } catch (telegramError) {
+
+        console.error(
+          "Telegram error:",
+          telegramError.message
+        );
+
+      }
 
 
       return res.json({
@@ -526,7 +1194,6 @@ Admin should manually verify/pay the withdrawal before marking it successful.
         error
       );
 
-
       return res.status(500).json({
 
         ok: false,
@@ -543,99 +1210,513 @@ Admin should manually verify/pay the withdrawal before marking it successful.
 );
 
 
-/* =====================================================
-   ADMIN REQUEST STATUS
-   Approve / Reject will be protected later.
-===================================================== */
+// ============================================================
+// ADMIN REQUEST STATUS
+//
+// Secure server-side approve/reject.
+//
+// Client must send:
+//
+// Authorization: Bearer FIREBASE_ID_TOKEN
+//
+// Body:
+//
+// {
+//   requestId,
+//   type,
+//   status
+// }
+// ============================================================
 
 app.post(
   "/api/admin/request-status",
+
+  verifyFirebaseToken,
+
+  requireAdmin,
+
   async (req, res) => {
 
     try {
 
       if (!db) {
+
         return res.status(500).json({
           ok: false,
-          message: "Firebase backend is not configured."
+          message:
+            "Firebase backend is not configured."
         });
+
       }
 
 
-      const {
-        requestId,
-        type,
-        status
-      } = req.body;
+      const requestId =
+        cleanString(
+          req.body.requestId,
+          150
+        );
+
+
+      const type =
+        cleanString(
+          req.body.type,
+          30
+        ).toLowerCase();
+
+
+      const status =
+        cleanString(
+          req.body.status,
+          20
+        ).toUpperCase();
 
 
       if (!requestId) {
+
         return res.status(400).json({
           ok: false,
-          message: "Request ID is required."
+          message:
+            "Request ID is required."
         });
+
       }
 
 
       if (
-        !["APPROVED", "REJECTED"].includes(status)
+        ![
+          "withdrawal",
+          "topup",
+          "add-balance",
+          "topupRequests",
+          "withdrawalRequests"
+        ].includes(type)
       ) {
+
         return res.status(400).json({
           ok: false,
-          message: "Invalid status."
+          message:
+            "Invalid request type."
         });
+
+      }
+
+
+      if (
+        ![
+          "APPROVED",
+          "REJECTED"
+        ].includes(status)
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          message:
+            "Invalid status."
+        });
+
       }
 
 
       const collectionName =
-        type === "withdrawal"
+        type === "withdrawal" ||
+        type === "withdrawalRequests"
           ? "withdrawalRequests"
           : "topupRequests";
 
 
       const requestRef =
-        db.collection(collectionName).doc(requestId);
+        db.collection(
+          collectionName
+        ).doc(requestId);
 
 
-      const snap =
-        await requestRef.get();
+      // ======================================================
+      // APPROVE / REJECT
+      // ======================================================
+
+      await db.runTransaction(
+        async transaction => {
+
+          const requestSnap =
+            await transaction.get(
+              requestRef
+            );
 
 
-      if (!snap.exists) {
-        return res.status(404).json({
-          ok: false,
-          message: "Request not found."
-        });
+          if (
+            !requestSnap.exists
+          ) {
+
+            throw new Error(
+              "Request not found."
+            );
+
+          }
+
+
+          const request =
+            requestSnap.data();
+
+
+          // ------------------------------
+          // Prevent double processing
+          // ------------------------------
+
+          if (
+            request.status !==
+            "PENDING"
+          ) {
+
+            throw new Error(
+              "This request has already been processed."
+            );
+
+          }
+
+
+          const uid =
+            cleanString(
+              request.userId,
+              150
+            );
+
+
+          if (!uid) {
+
+            throw new Error(
+              "Request does not contain a valid user ID."
+            );
+
+          }
+
+
+          const amount =
+            Number(
+              request.amount
+            );
+
+
+          if (
+            !isValidAmount(
+              amount,
+              0.01,
+              1000000
+            )
+          ) {
+
+            throw new Error(
+              "Invalid request amount."
+            );
+
+          }
+
+
+          const userRef =
+            db.collection(
+              "users"
+            ).doc(uid);
+
+
+          const userSnap =
+            await transaction.get(
+              userRef
+            );
+
+
+          if (
+            !userSnap.exists
+          ) {
+
+            throw new Error(
+              "User not found."
+            );
+
+          }
+
+
+          const userData =
+            userSnap.data();
+
+
+          const currentBalance =
+            Number(
+              userData.balance || 0
+            );
+
+
+          // ==================================================
+          // REJECT
+          // ==================================================
+
+          if (
+            status === "REJECTED"
+          ) {
+
+            transaction.update(
+              requestRef,
+              {
+                status:
+                  "REJECTED",
+
+                processedAt:
+                  admin.firestore
+                    .FieldValue
+                    .serverTimestamp(),
+
+                processedBy:
+                  req.user.uid,
+
+                processedByEmail:
+                  req.user.email ||
+                  null
+              }
+            );
+
+            return;
+
+          }
+
+
+          // ==================================================
+          // APPROVE TOPUP
+          // ==================================================
+
+          if (
+            collectionName ===
+            "topupRequests"
+          ) {
+
+            const newBalance =
+              currentBalance +
+              amount;
+
+
+            transaction.update(
+              userRef,
+              {
+                balance:
+                  newBalance
+              }
+            );
+
+
+            transaction.update(
+              requestRef,
+              {
+                status:
+                  "APPROVED",
+
+                processedAt:
+                  admin.firestore
+                    .FieldValue
+                    .serverTimestamp(),
+
+                processedBy:
+                  req.user.uid,
+
+                processedByEmail:
+                  req.user.email ||
+                  null
+              }
+            );
+
+
+            const walletRef =
+              db.collection(
+                "walletTransactions"
+              ).doc();
+
+
+            transaction.set(
+              walletRef,
+              {
+
+                userId:
+                  uid,
+
+                type:
+                  "DEMO_TOPUP",
+
+                amount:
+                  amount,
+
+                balanceBefore:
+                  currentBalance,
+
+                balanceAfter:
+                  newBalance,
+
+                createdAt:
+                  admin.firestore
+                    .FieldValue
+                    .serverTimestamp(),
+
+                note:
+                  "Admin approved demo wallet request",
+
+                adminUid:
+                  req.user.uid
+
+              }
+            );
+
+
+            return;
+
+          }
+
+
+          // ==================================================
+          // APPROVE WITHDRAWAL
+          // ==================================================
+
+          if (
+            collectionName ===
+            "withdrawalRequests"
+          ) {
+
+            if (
+              amount < 50
+            ) {
+
+              throw new Error(
+                "Withdrawal must be at least ₹50."
+              );
+
+            }
+
+
+            if (
+              currentBalance -
+                amount <
+              100
+            ) {
+
+              throw new Error(
+                "Withdrawal cannot reduce wallet below ₹100."
+              );
+
+            }
+
+
+            const newBalance =
+              currentBalance -
+              amount;
+
+
+            transaction.update(
+              userRef,
+              {
+                balance:
+                  newBalance
+              }
+            );
+
+
+            transaction.update(
+              requestRef,
+              {
+                status:
+                  "APPROVED",
+
+                processedAt:
+                  admin.firestore
+                    .FieldValue
+                    .serverTimestamp(),
+
+                processedBy:
+                  req.user.uid,
+
+                processedByEmail:
+                  req.user.email ||
+                  null
+              }
+            );
+
+
+            const walletRef =
+              db.collection(
+                "walletTransactions"
+              ).doc();
+
+
+            transaction.set(
+              walletRef,
+              {
+
+                userId:
+                  uid,
+
+                type:
+                  "WITHDRAWAL",
+
+                amount:
+                  amount,
+
+                balanceBefore:
+                  currentBalance,
+
+                balanceAfter:
+                  newBalance,
+
+                createdAt:
+                  admin.firestore
+                    .FieldValue
+                    .serverTimestamp(),
+
+                note:
+                  "Admin approved withdrawal request",
+
+                adminUid:
+                  req.user.uid
+
+              }
+            );
+
+          }
+
+        }
+      );
+
+
+      // ======================================================
+      // TELEGRAM ADMIN ACTION
+      // ======================================================
+
+      try {
+
+        await telegramMessage(`
+
+<b>✅ ADMIN REQUEST UPDATE</b>
+
+<b>Type:</b> ${escapeHtml(
+          collectionName
+        )}
+
+<b>Request ID:</b>
+<code>${escapeHtml(
+          requestId
+        )}</code>
+
+<b>Status:</b> ${escapeHtml(
+          status
+        )}
+
+<b>Admin:</b> ${escapeHtml(
+          req.user.email ||
+          req.user.uid
+        )}
+
+`);
+
+      } catch (telegramError) {
+
+        console.error(
+          "Telegram admin notification error:",
+          telegramError.message
+        );
+
       }
-
-
-      const request =
-        snap.data();
-
-
-      if (request.status !== "PENDING") {
-        return res.status(400).json({
-          ok: false,
-          message:
-            "This request has already been processed."
-        });
-      }
-
-
-      /*
-       * IMPORTANT:
-       * Actual wallet mutation will be added
-       * after admin authentication is connected.
-       */
-
-      await requestRef.update({
-
-        status,
-
-        reviewedAt:
-          admin.firestore.FieldValue.serverTimestamp()
-
-      });
 
 
       return res.json({
@@ -655,8 +1736,7 @@ app.post(
         error
       );
 
-
-      return res.status(500).json({
+      return res.status(400).json({
 
         ok: false,
 
@@ -672,38 +1752,29 @@ app.post(
 );
 
 
-/* =====================================================
-   HTML ESCAPE
-===================================================== */
-
-function escapeHtml(value) {
-
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-
-}
-
-
-/* =====================================================
-   ERROR HANDLER
-===================================================== */
+// ============================================================
+// GLOBAL ERROR HANDLER
+// ============================================================
 
 app.use(
   (error, req, res, next) => {
 
-    console.error(error);
+    console.error(
+      "Server error:",
+      error
+    );
+
+
+    const message =
+      error?.message ||
+      "Request failed.";
+
 
     res.status(400).json({
 
       ok: false,
 
-      message:
-        error.message ||
-        "Request failed."
+      message
 
     });
 
@@ -711,9 +1782,9 @@ app.use(
 );
 
 
-/* =====================================================
-   START SERVER
-===================================================== */
+// ============================================================
+// START SERVER
+// ============================================================
 
 app.listen(
   PORT,
@@ -722,6 +1793,10 @@ app.listen(
 
     console.log(
       `TradeSim payment server running on port ${PORT}`
+    );
+
+    console.log(
+      `Admin email: ${ADMIN_EMAIL}`
     );
 
   }
