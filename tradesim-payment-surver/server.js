@@ -1751,6 +1751,852 @@ app.post(
   }
 );
 
+// ============================================================
+// TRADE SYSTEM
+// SERVER-SIDE BALANCE UPDATE
+// ============================================================
+
+const TRADE_MIN_AMOUNT = 100;
+const TRADE_MAX_AMOUNT = 500;
+const TRADE_SESSION_MS = 5 * 60 * 1000;
+
+
+/* ============================================================
+   RANDOM WIN RATE
+   Minimum 22%
+   Maximum 90%
+============================================================ */
+
+function getRandomWinRate() {
+
+  return (
+    Math.random() *
+      (90 - 22) +
+    22
+  );
+
+}
+
+
+/* ============================================================
+   TRADE RESULT
+============================================================ */
+
+function calculateTradeResult(amount) {
+
+  const winRate =
+    getRandomWinRate();
+
+  const won =
+    Math.random() * 100 <
+    winRate;
+
+
+  /*
+   * WIN:
+   * +45% profit
+   *
+   * LOSS:
+   * -55% loss
+   */
+
+  const profit =
+    won
+      ? amount * 0.45
+      : -(amount * 0.55);
+
+
+  return {
+
+    result:
+      won
+        ? "WIN"
+        : "LOSS",
+
+    profit:
+      Number(
+        profit.toFixed(2)
+      ),
+
+    winRate:
+      Number(
+        winRate.toFixed(2)
+      )
+
+  };
+
+}
+
+
+/* ============================================================
+   OPEN TRADE
+============================================================ */
+
+app.post(
+  "/api/trade/open",
+
+  verifyFirebaseToken,
+
+  async (req, res) => {
+
+    try {
+
+      if (!db) {
+
+        return res.status(500).json({
+
+          ok: false,
+
+          message:
+            "Firebase backend is not configured."
+
+        });
+
+      }
+
+
+      const userId =
+        req.user.uid;
+
+
+      const side =
+        String(
+          req.body.side || ""
+        )
+        .trim()
+        .toUpperCase();
+
+
+      const amount =
+        Number(
+          req.body.amount
+        );
+
+
+      // --------------------------------------------------------
+      // SIDE
+      // --------------------------------------------------------
+
+      if (
+        side !== "BUY" &&
+        side !== "SELL"
+      ) {
+
+        return res.status(400).json({
+
+          ok: false,
+
+          message:
+            "Invalid trade side."
+
+        });
+
+      }
+
+
+      // --------------------------------------------------------
+      // AMOUNT
+      // Minimum ₹100
+      // Maximum ₹500
+      // --------------------------------------------------------
+
+      if (
+        !isValidAmount(
+          amount,
+          TRADE_MIN_AMOUNT,
+          TRADE_MAX_AMOUNT
+        )
+      ) {
+
+        return res.status(400).json({
+
+          ok: false,
+
+          message:
+            `Trade amount must be between ₹${TRADE_MIN_AMOUNT} and ₹${TRADE_MAX_AMOUNT}.`
+
+        });
+
+      }
+
+
+      const cleanAmount =
+        Number(
+          amount.toFixed(2)
+        );
+
+
+      const userRef =
+        db.collection(
+          "users"
+        )
+        .doc(userId);
+
+
+      const tradeRef =
+        db.collection(
+          "trades"
+        )
+        .doc();
+
+
+      /*
+       * Result is generated on the server.
+       * Client cannot decide WIN/LOSS.
+       */
+
+      const result =
+        calculateTradeResult(
+          cleanAmount
+        );
+
+
+      await db.runTransaction(
+        async transaction => {
+
+          const userSnap =
+            await transaction.get(
+              userRef
+            );
+
+
+          if (
+            !userSnap.exists
+          ) {
+
+            throw new Error(
+              "User account not found."
+            );
+
+          }
+
+
+          const userData =
+            userSnap.data();
+
+
+          if (
+            userData.active === false
+          ) {
+
+            throw new Error(
+              "Your account is disabled."
+            );
+
+          }
+
+
+          const balance =
+            Number(
+              userData.balance || 0
+            );
+
+
+          // ----------------------------------------------------
+          // BALANCE CHECK
+          // ----------------------------------------------------
+
+          if (
+            balance < cleanAmount
+          ) {
+
+            throw new Error(
+              "Insufficient demo balance."
+            );
+
+          }
+
+
+          // ----------------------------------------------------
+          // DEDUCT TRADE AMOUNT
+          // ----------------------------------------------------
+
+          const newBalance =
+            Number(
+              (
+                balance -
+                cleanAmount
+              ).toFixed(2)
+            );
+
+
+          transaction.update(
+
+            userRef,
+
+            {
+
+              balance:
+                newBalance,
+
+              updatedAt:
+                admin.firestore
+                  .FieldValue
+                  .serverTimestamp()
+
+            }
+
+          );
+
+
+          // ----------------------------------------------------
+          // CREATE TRADE
+          // ----------------------------------------------------
+
+          transaction.set(
+
+            tradeRef,
+
+            {
+
+              userId:
+                userId,
+
+              userName:
+                cleanString(
+                  userData.name ||
+                  userData.displayName ||
+                  "Trader",
+                  100
+                ),
+
+              userEmail:
+                cleanString(
+                  userData.email ||
+                  req.user.email ||
+                  "",
+                  150
+                ),
+
+              side:
+                side,
+
+              amount:
+                cleanAmount,
+
+              status:
+                "OPEN",
+
+              result:
+                result.result,
+
+              profit:
+                result.profit,
+
+              winRate:
+                result.winRate,
+
+              sessionMinutes:
+                5,
+
+              createdAt:
+                admin.firestore
+                  .FieldValue
+                  .serverTimestamp(),
+
+              settleAt:
+                admin.firestore
+                  .Timestamp
+                  .fromMillis(
+                    Date.now() +
+                    TRADE_SESSION_MS
+                  ),
+
+              balanceBefore:
+                balance,
+
+              balanceAfterOpen:
+                newBalance,
+
+              settledAt:
+                null
+
+            }
+
+          );
+
+
+          // ----------------------------------------------------
+          // WALLET TRANSACTION
+          // ----------------------------------------------------
+
+          const walletRef =
+            db.collection(
+              "walletTransactions"
+            )
+            .doc();
+
+
+          transaction.set(
+
+            walletRef,
+
+            {
+
+              userId:
+                userId,
+
+              tradeId:
+                tradeRef.id,
+
+              type:
+                "TRADE_OPEN",
+
+              amount:
+                -cleanAmount,
+
+              balanceBefore:
+                balance,
+
+              balanceAfter:
+                newBalance,
+
+              createdAt:
+                admin.firestore
+                  .FieldValue
+                  .serverTimestamp(),
+
+              note:
+                `${side} trade opened`
+
+            }
+
+          );
+
+        }
+
+      );
+
+
+      return res.json({
+
+        ok:
+          true,
+
+        message:
+          "Trade opened successfully.",
+
+        tradeId:
+          tradeRef.id,
+
+        side:
+          side,
+
+        amount:
+          cleanAmount,
+
+        deducted:
+          cleanAmount,
+
+        sessionMinutes:
+          5
+
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "Open trade error:",
+        error
+      );
+
+
+      return res.status(400).json({
+
+        ok:
+          false,
+
+        message:
+          error.message ||
+          "Could not open trade."
+
+      });
+
+    }
+
+  }
+
+);
+
+
+/* ============================================================
+   SETTLE TRADE
+============================================================ */
+
+async function settleTrade(
+  tradeId
+) {
+
+  const tradeRef =
+    db.collection(
+      "trades"
+    )
+    .doc(tradeId);
+
+
+  await db.runTransaction(
+    async transaction => {
+
+      const tradeSnap =
+        await transaction.get(
+          tradeRef
+        );
+
+
+      if (
+        !tradeSnap.exists
+      ) {
+
+        return;
+
+      }
+
+
+      const trade =
+        tradeSnap.data();
+
+
+      // --------------------------------------------------------
+      // ALREADY SETTLED
+      // --------------------------------------------------------
+
+      if (
+        trade.status !== "OPEN"
+      ) {
+
+        return;
+
+      }
+
+
+      // --------------------------------------------------------
+      // WAIT UNTIL 5 MINUTES
+      // --------------------------------------------------------
+
+      if (
+        trade.settleAt &&
+        trade.settleAt.toMillis() >
+        Date.now()
+      ) {
+
+        return;
+
+      }
+
+
+      const userRef =
+        db.collection(
+          "users"
+        )
+        .doc(
+          trade.userId
+        );
+
+
+      const userSnap =
+        await transaction.get(
+          userRef
+        );
+
+
+      if (
+        !userSnap.exists
+      ) {
+
+        throw new Error(
+          "User not found."
+        );
+
+      }
+
+
+      const userData =
+        userSnap.data();
+
+
+      const currentBalance =
+        Number(
+          userData.balance || 0
+        );
+
+
+      const amount =
+        Number(
+          trade.amount || 0
+        );
+
+
+      const profit =
+        Number(
+          trade.profit || 0
+        );
+
+
+      /*
+       * Trade amount was already deducted
+       * when the trade opened.
+       *
+       * Settlement:
+       *
+       * current balance
+       * + original stake
+       * + profit/loss
+       */
+
+      const newBalance =
+        Number(
+
+          (
+            currentBalance +
+            amount +
+            profit
+          ).toFixed(2)
+
+        );
+
+
+      // --------------------------------------------------------
+      // UPDATE USER BALANCE
+      // --------------------------------------------------------
+
+      transaction.update(
+
+        userRef,
+
+        {
+
+          balance:
+            newBalance,
+
+          updatedAt:
+            admin.firestore
+              .FieldValue
+              .serverTimestamp()
+
+        }
+
+      );
+
+
+      // --------------------------------------------------------
+      // SETTLE TRADE
+      // --------------------------------------------------------
+
+      transaction.update(
+
+        tradeRef,
+
+        {
+
+          status:
+            "SETTLED",
+
+          settledAt:
+            admin.firestore
+              .FieldValue
+              .serverTimestamp(),
+
+          balanceBeforeSettlement:
+            currentBalance,
+
+          balanceAfterSettlement:
+            newBalance
+
+        }
+
+      );
+
+
+      // --------------------------------------------------------
+      // WALLET HISTORY
+      // --------------------------------------------------------
+
+      const walletRef =
+        db.collection(
+          "walletTransactions"
+        )
+        .doc();
+
+
+      transaction.set(
+
+        walletRef,
+
+        {
+
+          userId:
+            trade.userId,
+
+          tradeId:
+            tradeId,
+
+          type:
+            "TRADE_SETTLEMENT",
+
+          result:
+            trade.result,
+
+          amount:
+            Number(
+              (
+                amount +
+                profit
+              ).toFixed(2)
+            ),
+
+          stakeReturned:
+            amount,
+
+          profit:
+            profit,
+
+          balanceBefore:
+            currentBalance,
+
+          balanceAfter:
+            newBalance,
+
+          createdAt:
+            admin.firestore
+              .FieldValue
+              .serverTimestamp(),
+
+          note:
+            trade.result === "WIN"
+              ? "Winning trade settled"
+              : "Losing trade settled"
+
+        }
+
+      );
+
+    }
+
+  );
+
+}
+
+
+/* ============================================================
+   AUTOMATIC SETTLEMENT WORKER
+============================================================ */
+
+async function settleExpiredTrades() {
+
+  try {
+
+    if (!db) {
+
+      console.error(
+        "Settlement skipped: Firebase is not configured."
+      );
+
+      return;
+
+    }
+
+
+    const now =
+      admin.firestore
+        .Timestamp
+        .now();
+
+
+    const snapshot =
+      await db
+        .collection(
+          "trades"
+        )
+        .where(
+          "status",
+          "==",
+          "OPEN"
+        )
+        .where(
+          "settleAt",
+          "<=",
+          now
+        )
+        .limit(50)
+        .get();
+
+
+    if (
+      snapshot.empty
+    ) {
+
+      return;
+
+    }
+
+
+    for (
+      const tradeDoc
+      of snapshot.docs
+    ) {
+
+      try {
+
+        await settleTrade(
+          tradeDoc.id
+        );
+
+
+        console.log(
+          "Trade settled:",
+          tradeDoc.id
+        );
+
+
+      } catch (error) {
+
+        console.error(
+
+          "Settlement failed:",
+
+          tradeDoc.id,
+
+          error.message
+
+        );
+
+      }
+
+    }
+
+
+  } catch (error) {
+
+    console.error(
+      "Settlement worker error:",
+      error
+    );
+
+  }
+
+}
+
+
+/* ============================================================
+   CHECK EVERY 10 SECONDS
+============================================================ */
+
+setInterval(
+  settleExpiredTrades,
+  10000
+);
+
+
+/*
+ * Also run once when server starts.
+ */
+
+setTimeout(
+  settleExpiredTrades,
+  3000
+);
+
 
 // ============================================================
 // GLOBAL ERROR HANDLER

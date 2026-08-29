@@ -1,233 +1,343 @@
 rules_version = '2';
 
 service cloud.firestore {
-
   match /databases/{database}/documents {
 
-    /* =====================================================
-       HELPERS
-    ===================================================== */
+
+    // =========================================================
+    // HELPERS
+    // =========================================================
 
     function signedIn() {
       return request.auth != null;
     }
 
-    function isAdmin() {
+
+    function isOwner(userId) {
       return signedIn()
-        && request.auth.token.email == "kundusudip019@gmail.com";
+        && request.auth.uid == userId;
     }
 
 
-    /* =====================================================
-       USERS
-       IMPORTANT:
-       User can NEVER directly change balance.
-    ===================================================== */
-
-    match /users/{uid} {
-
-      /* User account creation */
-      allow create: if signedIn()
-        && request.auth.uid == uid
-        && request.resource.data.email == request.auth.token.email;
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email
+          == "kundusudip019@gmail.com";
+    }
 
 
-      /* User can read own account.
-         Admin can read all accounts. */
-      allow read: if signedIn()
-        && (
-          request.auth.uid == uid
-          || isAdmin()
-        );
+    // =========================================================
+    // USERS
+    // =========================================================
+
+    match /users/{userId} {
+
+      /*
+       * User can read only their own account.
+       */
+
+      allow read:
+        if isOwner(userId)
+        || isAdmin();
 
 
       /*
-       * User may update only normal profile fields.
+       * IMPORTANT:
        *
-       * BALANCE IS COMPLETELY PROTECTED.
+       * Normal client cannot directly modify balance.
        *
-       * Any update containing "balance" is denied.
+       * Balance changes are performed by
+       * Firebase Admin SDK on the server.
        */
-      allow update: if isAdmin()
-        || (
-          signedIn()
-          && request.auth.uid == uid
-          && request.resource.data.balance == resource.data.balance
-          && request.resource.data.email == resource.data.email
-        );
+
+      allow create:
+        if isOwner(userId);
 
 
-      allow delete: if isAdmin();
+      allow update:
+        if isAdmin();
+
+
+      allow delete:
+        if isAdmin();
+
     }
 
 
-    /* =====================================================
-       TRADES
-    ===================================================== */
+    // =========================================================
+    // TRADES
+    // =========================================================
 
     match /trades/{tradeId} {
 
-      allow read: if signedIn()
-        && (
-          resource.data.userId == request.auth.uid
-          || isAdmin()
-        );
+      /*
+       * User can see their own trades.
+       */
+
+      allow read:
+        if signedIn()
+        && resource.data.userId
+          == request.auth.uid
+        || isAdmin();
 
 
-      allow create: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.amount >= 100
-        && request.resource.data.amount <= 500
-        && request.resource.data.status == "OPEN"
-        && request.resource.data.sessionMinutes == 5;
+      /*
+       * IMPORTANT:
+       *
+       * Trade creation is handled by
+       * the secure server endpoint:
+       *
+       * POST /api/trade/open
+       *
+       * Firebase Admin SDK bypasses these rules.
+       *
+       * Therefore browser/client cannot create
+       * fake trades or manipulate balance.
+       */
+
+      allow create:
+        if false;
 
 
-      allow update: if isAdmin()
-        || (
-          signedIn()
-          && resource.data.userId == request.auth.uid
-          && resource.data.status == "OPEN"
-          && request.resource.data.status == "CLOSED"
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.amount == resource.data.amount
-        );
+      /*
+       * Trade settlement is also server-side.
+       */
+
+      allow update:
+        if isAdmin();
 
 
-      allow delete: if isAdmin();
+      allow delete:
+        if isAdmin();
+
     }
 
 
-    /* =====================================================
-       OFFERS
-    ===================================================== */
+    // =========================================================
+    // WALLET TRANSACTIONS
+    // =========================================================
 
-    match /offers/{offerId} {
+    match /walletTransactions/{transactionId} {
 
-      allow read: if signedIn();
+      /*
+       * User can read their own wallet history.
+       */
 
-      allow write: if isAdmin();
+      allow read:
+        if signedIn()
+        && resource.data.userId
+          == request.auth.uid
+        || isAdmin();
+
+
+      /*
+       * Wallet transaction records are created
+       * by the secure backend.
+       */
+
+      allow create:
+        if false;
+
+
+      allow update:
+        if isAdmin();
+
+
+      allow delete:
+        if isAdmin();
+
     }
 
 
-    /* =====================================================
-       SETTINGS
-    ===================================================== */
-
-    match /settings/{settingId} {
-
-      allow read: if signedIn();
-
-      allow write: if isAdmin();
-    }
-
-
-    /* =====================================================
-       MARKET STATE
-    ===================================================== */
-
-    match /marketState/{stateId} {
-
-      allow read: if signedIn();
-
-      allow create, update: if signedIn();
-
-      allow delete: if isAdmin();
-    }
-
-
-    /* =====================================================
-       TOP-UP REQUESTS
-       
-       User can create ONLY a pending request.
-       User cannot approve/reject/change it.
-    ===================================================== */
+    // =========================================================
+    // TOP-UP REQUESTS
+    // =========================================================
 
     match /topupRequests/{requestId} {
 
-      allow read: if signedIn()
-        && (
-          resource.data.userId == request.auth.uid
-          || isAdmin()
-        );
+      /*
+       * User can see only their own requests.
+       */
 
-
-      allow create: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == "PENDING"
-        && request.resource.data.amount > 0;
+      allow read:
+        if signedIn()
+        && resource.data.userId
+          == request.auth.uid
+        || isAdmin();
 
 
       /*
-       * Approval/rejection is SERVER-ONLY.
-       *
-       * Admin frontend must NOT directly update this
-       * document.
+       * Top-up request creation should happen
+       * through the secure payment server.
        */
-      allow update, delete: if false;
+
+      allow create:
+        if false;
+
+
+      /*
+       * Admin handles approval/rejection.
+       */
+
+      allow update:
+        if isAdmin();
+
+
+      allow delete:
+        if isAdmin();
+
     }
 
 
-    /* =====================================================
-       WITHDRAWAL REQUESTS
-       
-       User can create ONLY a pending request.
-       User cannot approve/reject/change it.
-    ===================================================== */
+    // =========================================================
+    // WITHDRAWAL REQUESTS
+    // =========================================================
 
     match /withdrawalRequests/{requestId} {
 
-      allow read: if signedIn()
-        && (
-          resource.data.userId == request.auth.uid
-          || isAdmin()
-        );
+      /*
+       * User can see only their own withdrawal requests.
+       */
 
-
-      allow create: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == "PENDING"
-        && request.resource.data.amount >= 50;
+      allow read:
+        if signedIn()
+        && resource.data.userId
+          == request.auth.uid
+        || isAdmin();
 
 
       /*
-       * Approval/rejection is SERVER-ONLY.
+       * Withdrawal request creation happens
+       * through the secure server.
        */
-      allow update, delete: if false;
-    }
 
-
-    /* =====================================================
-       WALLET TRANSACTIONS
-       
-       User can READ own transactions.
-       Only backend/server can CREATE them.
-    ===================================================== */
-
-    match /walletTransactions/{txId} {
-
-      allow read: if signedIn()
-        && (
-          resource.data.userId == request.auth.uid
-          || isAdmin()
-        );
+      allow create:
+        if false;
 
 
       /*
-       * No client-side transaction creation.
-       *
-       * Balance changes and transaction records must
-       * come from the trusted server.
+       * Admin handles approval/rejection.
        */
-      allow create, update, delete: if false;
+
+      allow update:
+        if isAdmin();
+
+
+      allow delete:
+        if isAdmin();
+
     }
 
 
-    /* =====================================================
-       DEFAULT DENY
-    ===================================================== */
+    // =========================================================
+    // PRODUCTS
+    // =========================================================
+
+    match /products/{productId} {
+
+      /*
+       * Products can be viewed by logged-in users.
+       */
+
+      allow read:
+        if signedIn();
+
+
+      /*
+       * Only admin can manage products.
+       */
+
+      allow create:
+        if isAdmin();
+
+      allow update:
+        if isAdmin();
+
+      allow delete:
+        if isAdmin();
+
+    }
+
+
+    // =========================================================
+    // ORDERS
+    // =========================================================
+
+    match /orders/{orderId} {
+
+      /*
+       * User can read their own orders.
+       */
+
+      allow read:
+        if signedIn()
+        && resource.data.userId
+          == request.auth.uid
+        || isAdmin();
+
+
+      /*
+       * Orders should not be used to modify
+       * wallet balance.
+       */
+
+      allow create:
+        if signedIn()
+        && request.resource.data.userId
+          == request.auth.uid;
+
+
+      allow update:
+        if isAdmin();
+
+
+      allow delete:
+        if isAdmin();
+
+    }
+
+
+    // =========================================================
+    // BALANCE TRANSACTIONS
+    // =========================================================
+
+    match /balanceTransactions/{transactionId} {
+
+      allow read:
+        if signedIn()
+        && resource.data.userId
+          == request.auth.uid
+        || isAdmin();
+
+
+      /*
+       * Balance changes must happen through
+       * trusted backend/Admin SDK.
+       */
+
+      allow create:
+        if false;
+
+
+      allow update:
+        if isAdmin();
+
+
+      allow delete:
+        if isAdmin();
+
+    }
+
+
+    // =========================================================
+    // DEFAULT DENY
+    // =========================================================
 
     match /{document=**} {
-      allow read, write: if false;
+
+      allow read, write:
+        if false;
+
     }
 
   }
