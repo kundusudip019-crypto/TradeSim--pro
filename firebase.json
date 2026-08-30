@@ -1,7 +1,7 @@
 {
   "hosting": [
     {
-      "target": "user",
+      "site": "tradesim-1",
       "public": "USER_SITE",
       "ignore": [
         "firebase.json",
@@ -10,15 +10,13 @@
       ]
     },
     {
-      "target": "admin",
+      "site": "tradesim-1-admin",
       "public": "ADMIN_SITE",
       "ignore": [
         "firebase.json",
         "**/.*",
         "**/node_modules/**"
-      ],
-      "cleanUrls": false,
-      "trailingSlash": false
+      ]
     }
   ]
 }

@@ -1,6 +1,6 @@
 /* =========================================================
    TradeSim Pro - User Wallet
-   Firebase + Dynamic UPI QR + Live Payment Server
+   Firebase + Dynamic UPI QR + Payment Server
 ========================================================= */
 
 import {
@@ -48,8 +48,9 @@ const MIN_REMAINING_BALANCE =
    HELPERS
 ========================================================= */
 
-const $ = (id) =>
-  document.getElementById(id);
+function $(id) {
+  return document.getElementById(id);
+}
 
 
 function money(value) {
@@ -88,6 +89,20 @@ function getDateMs(value) {
 
   if (value instanceof Date) {
     return value.getTime();
+  }
+
+  if (
+    typeof value === "object" &&
+    typeof value.seconds === "number"
+  ) {
+
+    return (
+      value.seconds * 1000 +
+      Math.floor(
+        (value.nanoseconds || 0) / 1000000
+      )
+    );
+
   }
 
   const parsed =
@@ -195,25 +210,32 @@ function createUpiUrl(
 ) {
 
   const params =
-    new URLSearchParams({
+    new URLSearchParams();
 
-      pa:
-        PAYMENT_UPI_ID,
+  params.set(
+    "pa",
+    PAYMENT_UPI_ID
+  );
 
-      pn:
-        PAYMENT_NAME,
+  params.set(
+    "pn",
+    PAYMENT_NAME
+  );
 
-      am:
-        Number(amount)
-          .toFixed(2),
+  params.set(
+    "am",
+    Number(amount).toFixed(2)
+  );
 
-      cu:
-        "INR",
+  params.set(
+    "cu",
+    "INR"
+  );
 
-      tn:
-        reference
-
-    });
+  params.set(
+    "tn",
+    reference
+  );
 
   return (
     "upi://pay?" +
@@ -224,7 +246,7 @@ function createUpiUrl(
 
 
 /* =========================================================
-   GENERATE PAYMENT QR
+   GENERATE QR
 ========================================================= */
 
 function generatePaymentQr() {
@@ -241,6 +263,9 @@ function generatePaymentQr() {
   const qrImage =
     $("upiQr");
 
+  const qrLoading =
+    $("qrLoading");
+
   const qrAmount =
     $("qrAmount");
 
@@ -256,6 +281,10 @@ function generatePaymentQr() {
   const output =
     $("topupMsg");
 
+
+  /* -------------------------------------------------------
+     VALIDATE AMOUNT
+  ------------------------------------------------------- */
 
   const amount =
     Number(input?.value);
@@ -282,6 +311,10 @@ function generatePaymentQr() {
     );
 
 
+  /* -------------------------------------------------------
+     CREATE PAYMENT STATE
+  ------------------------------------------------------- */
+
   currentPaymentAmount =
     cleanAmount;
 
@@ -296,6 +329,16 @@ function generatePaymentQr() {
     );
 
 
+  console.log(
+    "UPI URL:",
+    upiUrl
+  );
+
+
+  /* -------------------------------------------------------
+     SHOW PAYMENT BOX
+  ------------------------------------------------------- */
+
   if (paymentBox) {
     paymentBox.style.display =
       "block";
@@ -309,10 +352,22 @@ function generatePaymentQr() {
     paymentFields.classList.add("show");
   }
 
+
+  /* -------------------------------------------------------
+     AMOUNT
+  ------------------------------------------------------- */
+
   if (qrAmount) {
+
     qrAmount.textContent =
       money(cleanAmount);
+
   }
+
+
+  /* -------------------------------------------------------
+     REFERENCE
+  ------------------------------------------------------- */
 
   if (referenceBox) {
 
@@ -322,35 +377,78 @@ function generatePaymentQr() {
 
   }
 
+
+  /* -------------------------------------------------------
+     UPI APP BUTTON
+  ------------------------------------------------------- */
+
   if (payButton) {
 
     payButton.href =
       upiUrl;
 
+    payButton.onclick =
+      function () {
+
+        console.log(
+          "Opening UPI:",
+          upiUrl
+        );
+
+      };
+
   }
 
+
+  /* -------------------------------------------------------
+     RESET OLD QR
+  ------------------------------------------------------- */
 
   if (qrImage) {
 
-    qrImage.src = "";
+    qrImage.removeAttribute(
+      "src"
+    );
 
-    qrImage.alt =
-      "Generating payment QR...";
+    qrImage.style.display =
+      "none";
 
   }
 
 
-  /*
-   * Check QR library
-   */
+  if (qrLoading) {
+
+    qrLoading.style.display =
+      "block";
+
+    qrLoading.textContent =
+      "Generating QR...";
+
+  }
+
+
+  /* -------------------------------------------------------
+     CHECK QR LIBRARY
+  ------------------------------------------------------- */
 
   if (
     typeof QRCode === "undefined"
   ) {
 
+    console.error(
+      "QRCode library is not loaded."
+    );
+
+    if (qrLoading) {
+
+      qrLoading.textContent =
+        "QR library failed to load.";
+
+    }
+
     showMessage(
       output,
-      "QR library failed to load. Please refresh the page.",
+      "QR library failed to load. Check your internet connection and refresh.",
       false
     );
 
@@ -358,9 +456,9 @@ function generatePaymentQr() {
   }
 
 
-  /*
-   * Temporary QR container
-   */
+  /* -------------------------------------------------------
+     TEMP QR CONTAINER
+  ------------------------------------------------------- */
 
   const qrContainer =
     document.createElement("div");
@@ -369,55 +467,53 @@ function generatePaymentQr() {
     "fixed";
 
   qrContainer.style.left =
-    "-99999px";
+    "-100000px";
 
   qrContainer.style.top =
     "0";
+
+  qrContainer.style.width =
+    "230px";
+
+  qrContainer.style.height =
+    "230px";
+
+  qrContainer.style.background =
+    "#ffffff";
 
   document.body.appendChild(
     qrContainer
   );
 
 
+  /* -------------------------------------------------------
+     GENERATE QR
+  ------------------------------------------------------- */
+
   try {
 
     new QRCode(
       qrContainer,
       {
-        text: upiUrl,
-        width: 230,
-        height: 230,
+        text:
+          upiUrl,
+
+        width:
+          230,
+
+        height:
+          230,
+
+        colorDark:
+          "#000000",
+
+        colorLight:
+          "#ffffff",
+
         correctLevel:
           QRCode.CorrectLevel.M
       }
     );
-
-
-    setTimeout(() => {
-
-      const generatedImage =
-        qrContainer.querySelector(
-          "img"
-        );
-
-
-      if (
-        generatedImage &&
-        qrImage
-      ) {
-
-        qrImage.src =
-          generatedImage.src;
-
-        qrImage.alt =
-          "Dynamic UPI payment QR";
-
-      }
-
-
-      qrContainer.remove();
-
-    }, 300);
 
 
   } catch (error) {
@@ -429,6 +525,13 @@ function generatePaymentQr() {
 
     qrContainer.remove();
 
+    if (qrLoading) {
+
+      qrLoading.textContent =
+        "QR generation failed.";
+
+    }
+
     showMessage(
       output,
       "Could not generate payment QR.",
@@ -436,18 +539,183 @@ function generatePaymentQr() {
     );
 
     return;
+
   }
 
 
+  /* -------------------------------------------------------
+     WAIT FOR QR DOM
+  ------------------------------------------------------- */
+
+  setTimeout(
+    () => {
+
+      try {
+
+        let qrSource = "";
+
+
+        /*
+         * qrcodejs normally creates
+         * both canvas and image.
+         *
+         * Canvas is more reliable.
+         */
+
+        const canvas =
+          qrContainer.querySelector(
+            "canvas"
+          );
+
+
+        if (canvas) {
+
+          try {
+
+            qrSource =
+              canvas.toDataURL(
+                "image/png"
+              );
+
+          } catch (error) {
+
+            console.warn(
+              "Canvas conversion failed:",
+              error
+            );
+
+          }
+
+        }
+
+
+        /*
+         * Fallback to generated IMG.
+         */
+
+        if (!qrSource) {
+
+          const generatedImage =
+            qrContainer.querySelector(
+              "img"
+            );
+
+          if (
+            generatedImage?.src
+          ) {
+
+            qrSource =
+              generatedImage.src;
+
+          }
+
+        }
+
+
+        /* -------------------------------------------------
+           PUT QR INTO REAL IMAGE
+        ------------------------------------------------- */
+
+        if (
+          qrSource &&
+          qrImage
+        ) {
+
+          qrImage.onload =
+            function () {
+
+              qrImage.style.display =
+                "block";
+
+              if (qrLoading) {
+
+                qrLoading.style.display =
+                  "none";
+
+              }
+
+            };
+
+
+          qrImage.onerror =
+            function () {
+
+              console.error(
+                "QR image failed to display."
+              );
+
+              qrImage.style.display =
+                "none";
+
+              if (qrLoading) {
+
+                qrLoading.style.display =
+                  "block";
+
+                qrLoading.textContent =
+                  "QR image could not be displayed.";
+
+              }
+
+            };
+
+
+          qrImage.src =
+            qrSource;
+
+        } else {
+
+          console.error(
+            "No QR image/canvas found."
+          );
+
+          if (qrLoading) {
+
+            qrLoading.textContent =
+              "QR could not be generated.";
+
+          }
+
+        }
+
+
+      } catch (error) {
+
+        console.error(
+          "QR processing error:",
+          error
+        );
+
+        if (qrLoading) {
+
+          qrLoading.textContent =
+            "QR generation failed.";
+
+        }
+
+      } finally {
+
+        qrContainer.remove();
+
+      }
+
+    },
+
+    500
+  );
+
+
   if (output) {
+
     output.textContent = "";
+
   }
 
 }
 
 
 /* =========================================================
-   GET FIREBASE ID TOKEN
+   AUTH TOKEN
 ========================================================= */
 
 async function getAuthToken() {
@@ -455,17 +723,15 @@ async function getAuthToken() {
   const user =
     auth.currentUser;
 
+
   if (!user) {
+
     throw new Error(
       "Please login again."
     );
+
   }
 
-
-  /*
-   * Firebase automatically refreshes
-   * the token when required.
-   */
 
   const token =
     await getIdToken(
@@ -489,7 +755,7 @@ async function getAuthToken() {
 
 
 /* =========================================================
-   SERVER REQUEST HELPER
+   SERVER REQUEST
 ========================================================= */
 
 async function serverRequest(
@@ -568,7 +834,7 @@ async function serverRequest(
 
 
 /* =========================================================
-   TEST SERVER CONNECTION
+   TEST PAYMENT SERVER
 ========================================================= */
 
 async function testPaymentServer() {
@@ -598,16 +864,16 @@ async function testPaymentServer() {
 
 
     console.log(
-      "Payment server:",
+      "Payment server connected:",
       result
     );
 
 
   } catch (error) {
 
-    console.error(
-      "Payment server connection error:",
-      error
+    console.warn(
+      "Payment server connection:",
+      error.message
     );
 
   }
@@ -616,7 +882,7 @@ async function testPaymentServer() {
 
 
 /* =========================================================
-   SUBMIT PAYMENT REQUEST
+   SUBMIT TOP-UP
 ========================================================= */
 
 async function submitPaymentRequest(
@@ -652,9 +918,9 @@ async function submitPaymentRequest(
       ?.[0];
 
 
-  /*
-   * Validate generated payment
-   */
+  /* -------------------------------------------------------
+     PAYMENT GENERATED?
+  ------------------------------------------------------- */
 
   if (
     !Number.isFinite(amount) ||
@@ -683,9 +949,9 @@ async function submitPaymentRequest(
   }
 
 
-  /*
-   * UTR
-   */
+  /* -------------------------------------------------------
+     UTR
+  ------------------------------------------------------- */
 
   if (
     !utr ||
@@ -702,9 +968,9 @@ async function submitPaymentRequest(
   }
 
 
-  /*
-   * Screenshot
-   */
+  /* -------------------------------------------------------
+     SCREENSHOT
+  ------------------------------------------------------- */
 
   if (!screenshot) {
 
@@ -768,6 +1034,10 @@ async function submitPaymentRequest(
   }
 
 
+  /* -------------------------------------------------------
+     SUBMIT
+  ------------------------------------------------------- */
+
   try {
 
     if (button) {
@@ -784,12 +1054,6 @@ async function submitPaymentRequest(
     const formData =
       new FormData();
 
-
-    /*
-     * IMPORTANT:
-     * userId is included only for compatibility.
-     * Server ignores it and uses verified token UID.
-     */
 
     formData.append(
       "userId",
@@ -855,10 +1119,13 @@ async function submitPaymentRequest(
     );
 
 
+    /* -----------------------------------------------------
+       CLEAR FORM
+    ----------------------------------------------------- */
+
     if ($("utr")) {
       $("utr").value = "";
     }
-
 
     if ($("paymentScreenshot")) {
       $("paymentScreenshot").value = "";
@@ -878,13 +1145,14 @@ async function submitPaymentRequest(
 
 
     /*
-     * Reset payment state.
-     *
-     * Do NOT reset reference displayed above.
+     * Prevent duplicate submission
      */
 
-    currentPaymentAmount = 0;
-    currentPaymentReference = "";
+    currentPaymentAmount =
+      0;
+
+    currentPaymentReference =
+      "";
 
 
   } catch (error) {
@@ -972,9 +1240,9 @@ async function submitWithdrawal(
     "";
 
 
-  /*
-   * Amount
-   */
+  /* -------------------------------------------------------
+     AMOUNT
+  ------------------------------------------------------- */
 
   if (
     !Number.isFinite(amount) ||
@@ -991,9 +1259,9 @@ async function submitWithdrawal(
   }
 
 
-  /*
-   * UPI
-   */
+  /* -------------------------------------------------------
+     UPI
+  ------------------------------------------------------- */
 
   const upiRegex =
     /^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$/;
@@ -1038,9 +1306,9 @@ async function submitWithdrawal(
     }
 
 
-    /*
-     * Read latest wallet balance
-     */
+    /* -----------------------------------------------------
+       GET LATEST USER BALANCE
+    ----------------------------------------------------- */
 
     const userSnap =
       await getDoc(
@@ -1070,6 +1338,10 @@ async function submitWithdrawal(
         userData.balance || 0
       );
 
+
+    /* -----------------------------------------------------
+       BALANCE CHECK
+    ----------------------------------------------------- */
 
     if (
       balance < amount
@@ -1115,12 +1387,9 @@ async function submitWithdrawal(
     }
 
 
-    /*
-     * Send withdrawal request.
-     *
-     * Authorization token is automatically
-     * added by serverRequest().
-     */
+    /* -----------------------------------------------------
+       SEND REQUEST
+    ----------------------------------------------------- */
 
     const result =
       await serverRequest(
@@ -1175,6 +1444,10 @@ async function submitWithdrawal(
     );
 
 
+    /* -----------------------------------------------------
+       CLEAR FORM
+    ----------------------------------------------------- */
+
     if (amountInput) {
       amountInput.value = "";
     }
@@ -1222,7 +1495,7 @@ async function submitWithdrawal(
 
 
 /* =========================================================
-   START WALLET LISTENERS
+   WALLET REQUEST LISTENERS
 ========================================================= */
 
 function startWalletListeners() {
@@ -1232,25 +1505,33 @@ function startWalletListeners() {
   }
 
 
-  /*
-   * Remove old listeners
-   */
+  /* -------------------------------------------------------
+     CLEAN OLD LISTENERS
+  ------------------------------------------------------- */
 
   if (unsubscribeTopups) {
+
     unsubscribeTopups();
-    unsubscribeTopups = null;
+
+    unsubscribeTopups =
+      null;
+
   }
 
 
   if (unsubscribeWithdrawals) {
+
     unsubscribeWithdrawals();
-    unsubscribeWithdrawals = null;
+
+    unsubscribeWithdrawals =
+      null;
+
   }
 
 
-  /*
-   * TOPUP REQUESTS
-   */
+  /* -------------------------------------------------------
+     TOPUPS
+  ------------------------------------------------------- */
 
   const topupQuery =
     query(
@@ -1301,9 +1582,9 @@ function startWalletListeners() {
     );
 
 
-  /*
-   * WITHDRAWAL REQUESTS
-   */
+  /* -------------------------------------------------------
+     WITHDRAWALS
+  ------------------------------------------------------- */
 
   const withdrawalQuery =
     query(
@@ -1374,9 +1655,9 @@ function renderWalletRequests() {
   const items = [];
 
 
-  /*
-   * TOPUPS
-   */
+  /* -------------------------------------------------------
+     TOPUPS
+  ------------------------------------------------------- */
 
   topupRequests.forEach(
     request => {
@@ -1415,9 +1696,9 @@ function renderWalletRequests() {
   );
 
 
-  /*
-   * WITHDRAWALS
-   */
+  /* -------------------------------------------------------
+     WITHDRAWALS
+  ------------------------------------------------------- */
 
   withdrawalRequests.forEach(
     request => {
@@ -1456,9 +1737,9 @@ function renderWalletRequests() {
   );
 
 
-  /*
-   * Newest first
-   */
+  /* -------------------------------------------------------
+     SORT
+  ------------------------------------------------------- */
 
   items.sort(
     (a, b) =>
@@ -1466,6 +1747,10 @@ function renderWalletRequests() {
       a.date
   );
 
+
+  /* -------------------------------------------------------
+     EMPTY
+  ------------------------------------------------------- */
 
   if (!items.length) {
 
@@ -1476,6 +1761,10 @@ function renderWalletRequests() {
   }
 
 
+  /* -------------------------------------------------------
+     HTML
+  ------------------------------------------------------- */
+
   box.innerHTML =
     items
       .map(
@@ -1484,7 +1773,12 @@ function renderWalletRequests() {
           const status =
             String(
               item.status
-            ).toLowerCase();
+            )
+              .toLowerCase()
+              .replaceAll(
+                " ",
+                "-"
+              );
 
 
           const amountText =
@@ -1492,10 +1786,14 @@ function renderWalletRequests() {
             "Withdrawal"
 
               ? "-" +
-                money(item.amount)
+                money(
+                  item.amount
+                )
 
               : "+" +
-                money(item.amount);
+                money(
+                  item.amount
+                );
 
 
           return `
@@ -1505,10 +1803,13 @@ function renderWalletRequests() {
               <div class="request-main">
 
                 <div class="request-title">
+
                   ${escapeHtml(
                     item.type
                   )}
+
                 </div>
+
 
                 <div class="request-meta">
 
@@ -1526,7 +1827,10 @@ function renderWalletRequests() {
 
                 </div>
 
-                <span class="status ${escapeHtml(status)}">
+
+                <span
+                  class="status ${escapeHtml(status)}"
+                >
 
                   ${escapeHtml(
                     item.status
@@ -1535,6 +1839,7 @@ function renderWalletRequests() {
                 </span>
 
               </div>
+
 
               <div class="request-amount">
 
@@ -1575,8 +1880,12 @@ function startUserBalanceListener() {
 
 
   if (unsubscribeUser) {
+
     unsubscribeUser();
-    unsubscribeUser = null;
+
+    unsubscribeUser =
+      null;
+
   }
 
 
@@ -1653,9 +1962,9 @@ onAuthStateChanged(
   auth,
   async user => {
 
-    /*
-     * Not logged in
-     */
+    /* -----------------------------------------------------
+       NOT LOGGED IN
+    ----------------------------------------------------- */
 
     if (!user) {
 
@@ -1669,9 +1978,9 @@ onAuthStateChanged(
 
     try {
 
-      /*
-       * Get Firestore profile
-       */
+      /* ---------------------------------------------------
+         FIRESTORE PROFILE
+      --------------------------------------------------- */
 
       const userRef =
         doc(
@@ -1703,9 +2012,9 @@ onAuthStateChanged(
         userSnap.data();
 
 
-      /*
-       * Disabled account
-       */
+      /* ---------------------------------------------------
+         DISABLED ACCOUNT
+      --------------------------------------------------- */
 
       if (
         userData.active === false
@@ -1721,9 +2030,9 @@ onAuthStateChanged(
       }
 
 
-      /*
-       * Current user
-       */
+      /* ---------------------------------------------------
+         CURRENT USER
+      --------------------------------------------------- */
 
       me = {
 
@@ -1740,23 +2049,18 @@ onAuthStateChanged(
       };
 
 
-      /*
-       * Start realtime balance
-       */
+      /* ---------------------------------------------------
+         START LISTENERS
+      --------------------------------------------------- */
 
       startUserBalanceListener();
-
-
-      /*
-       * Start request listeners
-       */
 
       startWalletListeners();
 
 
-      /*
-       * Test live backend
-       */
+      /* ---------------------------------------------------
+         TEST PAYMENT SERVER
+      --------------------------------------------------- */
 
       testPaymentServer();
 
@@ -1805,6 +2109,10 @@ $("withdrawForm")
   );
 
 
+/* =========================================================
+   LOGOUT
+========================================================= */
+
 $("logout")
   ?.addEventListener(
     "click",
@@ -1839,16 +2147,49 @@ $("topupAmount")
     "input",
     () => {
 
+      const input =
+        $("topupAmount");
+
       const value =
         Number(
-          $("topupAmount")
-            ?.value
+          input?.value
         );
 
 
       /*
-       * If amount becomes invalid,
-       * hide old QR.
+       * If amount changes after QR
+       * was generated, old payment
+       * state is invalid.
+       */
+
+      if (
+        currentPaymentAmount > 0 &&
+        value !== currentPaymentAmount
+      ) {
+
+        currentPaymentAmount =
+          0;
+
+        currentPaymentReference =
+          "";
+
+
+        const paymentBox =
+          $("paymentBox");
+
+
+        if (paymentBox) {
+
+          paymentBox.style.display =
+            "none";
+
+        }
+
+      }
+
+
+      /*
+       * Invalid amount
        */
 
       if (

@@ -1,8 +1,6 @@
 <!doctype html>
 <html lang="en">
-
 <head>
-
   <meta charset="UTF-8">
 
   <meta
@@ -18,9 +16,8 @@
   >
 
   <style>
-
     /* =====================================================
-       PAYMENT QR
+       PAYMENT BOX
     ===================================================== */
 
     .payment-box {
@@ -48,6 +45,10 @@
       word-break: break-all;
     }
 
+    /* =====================================================
+       QR
+    ===================================================== */
+
     .qr-wrap {
       display: none;
       margin-top: 18px;
@@ -61,12 +62,30 @@
       display: block;
     }
 
+    .qr-image-box {
+      width: 230px;
+      height: 230px;
+      max-width: 100%;
+      margin: 0 auto 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
     #upiQr {
       width: 230px;
       height: 230px;
       max-width: 100%;
       display: block;
-      margin: 0 auto 15px;
+      object-fit: contain;
+    }
+
+    .qr-loading {
+      color: #555;
+      font-size: 13px;
     }
 
     .qr-amount {
@@ -90,11 +109,19 @@
       padding: 0 18px;
       margin-top: 14px;
       border-radius: 9px;
-      background: linear-gradient(135deg,#168cff,#006bd7);
+      background: linear-gradient(
+        135deg,
+        #168cff,
+        #006bd7
+      );
       color: #fff;
       text-decoration: none;
       font-weight: 700;
     }
+
+    /* =====================================================
+       PAYMENT FIELDS
+    ===================================================== */
 
     .payment-fields {
       display: none;
@@ -120,6 +147,10 @@
       margin-top: 10px;
       word-break: break-all;
     }
+
+    /* =====================================================
+       MESSAGE BOXES
+    ===================================================== */
 
     .warning-box {
       margin-top: 14px;
@@ -149,6 +180,10 @@
       transform: none !important;
     }
 
+    /* =====================================================
+       REQUEST HISTORY
+    ===================================================== */
+
     .request-row {
       display: flex;
       justify-content: space-between;
@@ -174,6 +209,7 @@
       margin-top: 4px;
       color: #7895a8;
       font-size: 11px;
+      line-height: 1.5;
     }
 
     .request-amount {
@@ -205,7 +241,16 @@
       color: #ff7d86;
     }
 
+    /* =====================================================
+       MOBILE
+    ===================================================== */
+
     @media (max-width: 600px) {
+
+      .qr-image-box {
+        width: 210px;
+        height: 210px;
+      }
 
       #upiQr {
         width: 210px;
@@ -220,528 +265,539 @@
       .request-amount {
         align-self: flex-start;
       }
-
     }
-
   </style>
-
 </head>
-
 
 <body>
 
+  <!-- =====================================================
+       HEADER
+  ===================================================== -->
 
-<header class="top">
-
-  <a
-    class="brand"
-    href="dashboard.html"
-  >
-    TradeSim
-    <span>PRO</span>
-  </a>
-
-  <div class="walletTop">
-
-    <small>
-      Wallet Balance
-    </small>
-
-    <b id="topBalance">
-      ₹0.00
-    </b>
-
-  </div>
-
-</header>
-
-
-
-<div class="layout">
-
-
-  <!-- ===================================================
-       SIDEBAR
-  ==================================================== -->
-
-  <aside>
-
-    <a href="dashboard.html">
-      📊 Dashboard
-    </a>
-
-    <a href="trades.html">
-      📈 Trades
-    </a>
+  <header class="top">
 
     <a
-      href="wallet.html"
-      class="active"
+      class="brand"
+      href="dashboard.html"
     >
-      💳 Wallet
+      TradeSim
+      <span>PRO</span>
     </a>
 
-    <a href="history.html">
-      📜 History
-    </a>
+    <div class="walletTop">
 
-    <a href="offers.html">
-      🎁 Offers
-    </a>
+      <small>
+        Wallet Balance
+      </small>
 
-    <a href="referral.html">
-      🔗 Referral
-    </a>
-
-    <a href="settings.html">
-      ⚙️ Settings
-    </a>
-
-    <button
-      id="logout"
-      class="logout"
-      type="button"
-    >
-      Logout
-    </button>
-
-  </aside>
-
-
-
-  <!-- ===================================================
-       CONTENT
-  ==================================================== -->
-
-  <main class="content">
-
-
-    <div class="pageHead">
-
-      <div>
-
-        <div class="muted">
-          ACCOUNT WALLET
-        </div>
-
-        <h1>
-          Wallet
-        </h1>
-
-      </div>
+      <b id="topBalance">
+        ₹0.00
+      </b>
 
     </div>
 
+  </header>
 
 
-    <!-- =================================================
-         WALLET SUMMARY
-    ================================================== -->
+  <div class="layout">
 
-    <section class="card">
+    <!-- ===================================================
+         SIDEBAR
+    ==================================================== -->
 
-      <div class="stats">
+    <aside>
 
-        <div class="stat">
+      <a href="dashboard.html">
+        📊 Dashboard
+      </a>
 
-          <small>
-            Available Balance
-          </small>
+      <a href="trades.html">
+        📈 Trades
+      </a>
 
-          <strong id="walletBalance">
-            ₹0.00
-          </strong>
+      <a
+        href="wallet.html"
+        class="active"
+      >
+        💳 Wallet
+      </a>
 
-        </div>
+      <a href="history.html">
+        📜 History
+      </a>
+
+      <a href="offers.html">
+        🎁 Offers
+      </a>
+
+      <a href="referral.html">
+        🔗 Referral
+      </a>
+
+      <a href="settings.html">
+        ⚙️ Settings
+      </a>
+
+      <button
+        id="logout"
+        class="logout"
+        type="button"
+      >
+        Logout
+      </button>
+
+    </aside>
 
 
-        <div class="stat">
+    <!-- ===================================================
+         MAIN
+    ==================================================== -->
 
-          <small>
-            Minimum Wallet Balance
-          </small>
+    <main class="content">
 
-          <strong>
-            ₹100
-          </strong>
+      <div class="pageHead">
 
-        </div>
+        <div>
 
+          <div class="muted">
+            ACCOUNT WALLET
+          </div>
 
-        <div class="stat">
-
-          <small>
-            Minimum Withdrawal
-          </small>
-
-          <strong>
-            ₹50
-          </strong>
-
-        </div>
-
-
-        <div class="stat">
-
-          <small>
-            Trade Range
-          </small>
-
-          <strong>
-            ₹100–₹500
-          </strong>
+          <h1>
+            Wallet
+          </h1>
 
         </div>
 
       </div>
 
-      <p class="muted">
 
-        Your wallet balance is your actual account balance.
-        Add-funds and withdrawal requests are reviewed
-        by the administrator before the balance is updated.
+      <!-- =================================================
+           WALLET SUMMARY
+      ================================================== -->
 
-      </p>
+      <section class="card">
 
-    </section>
+        <div class="stats">
 
+          <div class="stat">
 
+            <small>
+              Available Balance
+            </small>
 
-    <!-- =================================================
-         ADD FUNDS
-    ================================================== -->
+            <strong id="walletBalance">
+              ₹0.00
+            </strong>
 
-    <section class="card">
-
-      <h3>
-        Add Funds
-      </h3>
-
-      <p class="muted">
-
-        Enter the amount you want to add.
-        A payment QR will be generated for the exact amount.
-        After completing the payment, submit your UTR and
-        payment screenshot for verification.
-
-      </p>
+          </div>
 
 
-      <form id="topupForm">
+          <div class="stat">
 
-        <label class="field">
+            <small>
+              Minimum Wallet Balance
+            </small>
 
-          Amount (₹)
+            <strong>
+              ₹100
+            </strong>
 
-          <input
-            id="topupAmount"
-            type="number"
-            min="1"
-            step="1"
-            placeholder="Enter amount"
-            required
-          >
-
-        </label>
+          </div>
 
 
-        <div style="margin-top:14px">
+          <div class="stat">
 
-          <button
-            id="generateQr"
-            class="btn"
-            type="button"
-          >
-            Generate Payment QR
-          </button>
+            <small>
+              Minimum Withdrawal
+            </small>
+
+            <strong>
+              ₹50
+            </strong>
+
+          </div>
+
+
+          <div class="stat">
+
+            <small>
+              Trade Range
+            </small>
+
+            <strong>
+              ₹100–₹500
+            </strong>
+
+          </div>
 
         </div>
 
-      </form>
 
+        <p class="muted">
+
+          Your wallet balance is your actual account balance.
+          Add-funds and withdrawal requests are reviewed
+          by the administrator before the balance is updated.
+
+        </p>
+
+      </section>
 
 
       <!-- =================================================
-           DYNAMIC QR
+           ADD FUNDS
       ================================================== -->
 
-      <div
-        id="paymentBox"
-        class="payment-box"
-        style="display:none"
-      >
+      <section class="card">
 
-        <h4>
-          Pay using UPI
-        </h4>
+        <h3>
+          Add Funds
+        </h3>
 
-        <div class="muted">
-          Payment UPI ID
-        </div>
+        <p class="muted">
 
-        <div class="upi-id">
-          9992693790@fam
+          Enter the amount you want to add.
+          A payment QR will be generated for the exact amount.
+          After completing the payment, submit your UTR and
+          payment screenshot for verification.
+
+        </p>
+
+
+        <form id="topupForm">
+
+          <label class="field">
+
+            Amount (₹)
+
+            <input
+              id="topupAmount"
+              type="number"
+              min="1"
+              max="100000"
+              step="1"
+              placeholder="Enter amount"
+              required
+            >
+
+          </label>
+
+
+          <div style="margin-top:14px">
+
+            <button
+              id="generateQr"
+              class="btn"
+              type="button"
+            >
+              Generate Payment QR
+            </button>
+
+          </div>
+
+        </form>
+
+
+        <!-- =================================================
+             PAYMENT BOX
+        ================================================== -->
+
+        <div
+          id="paymentBox"
+          class="payment-box"
+          style="display:none"
+        >
+
+          <h4>
+            Pay using UPI
+          </h4>
+
+
+          <div class="muted">
+            Payment UPI ID
+          </div>
+
+
+          <div class="upi-id">
+            9992693790@fam
+          </div>
+
+
+          <!-- QR -->
+
+          <div
+            id="qrWrap"
+            class="qr-wrap"
+          >
+
+            <div class="qr-image-box">
+
+              <img
+                id="upiQr"
+                alt="UPI payment QR"
+              >
+
+              <span
+                id="qrLoading"
+                class="qr-loading"
+              >
+                Generating QR...
+              </span>
+
+            </div>
+
+
+            <div
+              id="qrAmount"
+              class="qr-amount"
+            >
+              ₹0.00
+            </div>
+
+
+            <div class="qr-note">
+
+              Scan this QR using your UPI app
+              and complete the payment.
+
+            </div>
+
+
+            <a
+              id="payWithUpi"
+              class="pay-upi-btn"
+              href="#"
+            >
+              Open UPI App
+            </a>
+
+          </div>
+
+
+          <!-- WARNING -->
+
+          <div class="warning-box">
+
+            <b>Important:</b>
+
+            Pay exactly the amount shown above.
+
+            After payment, enter the UTR /
+            transaction ID and upload your
+            payment screenshot.
+
+          </div>
+
+
+          <!-- =================================================
+               PAYMENT DETAILS
+          ================================================== -->
+
+          <form
+            id="paymentSubmitForm"
+            class="payment-fields"
+          >
+
+            <label class="field">
+
+              UTR / Transaction ID
+
+              <input
+                id="utr"
+                type="text"
+                maxlength="100"
+                autocomplete="off"
+                placeholder="Enter UTR / transaction ID"
+                required
+              >
+
+            </label>
+
+
+            <label class="field upload-box">
+
+              Payment Screenshot
+
+              <input
+                id="paymentScreenshot"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                required
+              >
+
+            </label>
+
+
+            <div
+              id="paymentReference"
+              class="payment-reference"
+            ></div>
+
+
+            <button
+              id="submitPayment"
+              class="btn"
+              type="submit"
+              style="margin-top:15px"
+            >
+              Submit Payment Request
+            </button>
+
+          </form>
+
         </div>
 
 
         <div
-          id="qrWrap"
-          class="qr-wrap"
-        >
+          id="topupMsg"
+          class="msg"
+        ></div>
 
-          <img
-            id="upiQr"
-            alt="Dynamic UPI QR"
-          >
-
-          <div
-            id="qrAmount"
-            class="qr-amount"
-          >
-            ₹0.00
-          </div>
-
-          <div class="qr-note">
-
-            Scan this QR using your UPI app
-            and complete the payment.
-
-          </div>
+      </section>
 
 
-          <a
-            id="payWithUpi"
-            class="pay-upi-btn"
-            href="#"
-          >
-            Open UPI App
-          </a>
+      <!-- =================================================
+           WITHDRAWAL
+      ================================================== -->
 
-        </div>
+      <section class="card">
 
+        <h3>
+          Withdraw Funds
+        </h3>
 
-        <div class="warning-box">
+        <p class="muted">
 
-          <b>Important:</b>
-          Pay exactly the amount shown above.
-          After payment, enter the UTR / transaction ID
-          and upload your payment screenshot.
+          Minimum withdrawal is ₹50.
+          You must keep at least ₹100 in your wallet
+          after the withdrawal.
 
-        </div>
+        </p>
 
 
-        <!-- =================================================
-             PAYMENT DETAILS
-        ================================================== -->
-
-        <form
-          id="paymentSubmitForm"
-          class="payment-fields"
-        >
+        <form id="withdrawForm">
 
           <label class="field">
 
-            UTR / Transaction ID
+            Amount (₹)
 
             <input
-              id="utr"
+              id="withdrawAmount"
+              type="number"
+              min="50"
+              step="1"
+              placeholder="Enter amount"
+              required
+            >
+
+          </label>
+
+
+          <label
+            class="field"
+            style="margin-top:12px"
+          >
+
+            Your UPI ID
+
+            <input
+              id="withdrawUpi"
               type="text"
               maxlength="100"
-              placeholder="Enter UTR / transaction ID"
+              autocomplete="off"
+              placeholder="example@upi"
               required
             >
 
           </label>
 
 
-          <label class="field upload-box">
+          <label
+            class="field"
+            style="margin-top:12px"
+          >
 
-            Payment Screenshot
+            Note (optional)
 
             <input
-              id="paymentScreenshot"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              required
+              id="withdrawNote"
+              type="text"
+              maxlength="120"
+              placeholder="Optional withdrawal note"
             >
 
           </label>
-
-
-          <div
-            id="paymentReference"
-            class="payment-reference"
-          ></div>
 
 
           <button
-            id="submitPayment"
-            class="btn"
+            class="btn sell"
             type="submit"
-            style="margin-top:15px"
+            style="margin-top:14px"
           >
-            Submit Top-up Request
+            Request Withdrawal
           </button>
 
         </form>
 
-      </div>
+
+        <div
+          id="withdrawMsg"
+          class="msg"
+        ></div>
+
+      </section>
 
 
-      <div
-        id="topupMsg"
-        class="msg"
-      ></div>
+      <!-- =================================================
+           REQUEST HISTORY
+      ================================================== -->
 
-    </section>
+      <section class="card">
 
+        <h3>
+          Wallet Requests
+        </h3>
 
-
-    <!-- =================================================
-         WITHDRAWAL
-    ================================================== -->
-
-    <section class="card">
-
-      <h3>
-        Withdraw Funds
-      </h3>
-
-      <p class="muted">
-
-        Minimum withdrawal is ₹50.
-        You must keep at least ₹100 in your wallet
-        after the withdrawal.
-
-      </p>
-
-
-      <form id="withdrawForm">
-
-
-        <label class="field">
-
-          Amount (₹)
-
-          <input
-            id="withdrawAmount"
-            type="number"
-            min="50"
-            step="1"
-            placeholder="Enter amount"
-            required
-          >
-
-        </label>
-
-
-        <label
-          class="field"
-          style="margin-top:12px"
+        <div
+          id="walletList"
+          class="list"
         >
 
-          Your UPI ID
+          <div class="empty">
+            Loading...
+          </div>
 
-          <input
-            id="withdrawUpi"
-            type="text"
-            maxlength="100"
-            placeholder="example@upi"
-            required
-          >
-
-        </label>
-
-
-        <label
-          class="field"
-          style="margin-top:12px"
-        >
-
-          Note (optional)
-
-          <input
-            id="withdrawNote"
-            type="text"
-            maxlength="120"
-            placeholder="Optional withdrawal note"
-          >
-
-        </label>
-
-
-        <button
-          class="btn sell"
-          type="submit"
-          style="margin-top:14px"
-        >
-          Request Withdrawal
-        </button>
-
-
-      </form>
-
-
-      <div
-        id="withdrawMsg"
-        class="msg"
-      ></div>
-
-    </section>
-
-
-
-    <!-- =================================================
-         REQUEST HISTORY
-    ================================================== -->
-
-    <section class="card">
-
-      <h3>
-        Wallet Requests
-      </h3>
-
-      <div
-        id="walletList"
-        class="list"
-      >
-
-        <div class="empty">
-          Loading...
         </div>
 
-      </div>
+      </section>
 
-    </section>
+    </main>
 
-
-  </main>
-
-</div>
+  </div>
 
 
+  <!-- =====================================================
+       QR CODE LIBRARY
+       IMPORTANT: ONLY ONE QR LIBRARY
+  ====================================================== -->
 
-<!-- =====================================================
-     QR CODE LIBRARY
-====================================================== -->
-
-<script
-  src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
-  crossorigin="anonymous"
-  referrerpolicy="no-referrer"
-></script>
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  ></script>
 
 
-<!-- =====================================================
-     PAGE SCRIPT
-====================================================== -->
+  <!-- =====================================================
+       PAGE SCRIPT
+  ====================================================== -->
 
-<script
-  type="module"
-  src="js/wallet.js"
-></script>
-
+  <script
+    type="module"
+    src="js/wallet.js"
+  ></script>
 
 </body>
-
 </html>
