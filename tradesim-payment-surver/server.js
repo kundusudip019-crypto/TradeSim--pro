@@ -1,17 +1,4 @@
-// ============================================================
-// TradeSim Pro — Complete Server
-// DEMO / VIRTUAL TRADING ONLY
-//
-// GLOBAL SIMULATOR RULES
-// ------------------------------------------------------------
-// Trade amount       : ₹100 - ₹500
-// Session            : 5 minutes
-// Result             : ₹10 - ₹50
-// Global WIN target   : 45%
-// Global LOSS target  : 55%
-// Admin demo margin   : Random ₹5 - ₹12
-//
-// IMPORTANT
+
 // ------------------------------------------------------------
 // - Win/loss is NOT fixed per user.
 // - The global settled-trade history is used.
@@ -68,9 +55,13 @@ const TRADE_SESSION_MS =
   1000;
 
 
-// Result amount shown to the user.
-const MIN_RESULT = 10;
-const MAX_RESULT = 50;
+// Result amount shown 
+
+const MIN_PROFIT_RESULT = 10;
+const MAX_PROFIT_RESULT = 40;
+
+const MIN_LOSS_RESULT = 10;
+const MAX_LOSS_RESULT = 50;
 
 
 // ============================================================
@@ -350,11 +341,21 @@ function randomInt(
 }
 
 
-function randomResultAmount() {
+function randomProfitAmount() {
 
   return randomInt(
-    MIN_RESULT,
-    MAX_RESULT
+    MIN_PROFIT_RESULT,
+    MAX_PROFIT_RESULT
+  );
+
+}
+
+
+function randomLossAmount() {
+
+  return randomInt(
+    MIN_LOSS_RESULT,
+    MAX_LOSS_RESULT
   );
 
 }
@@ -695,10 +696,10 @@ async function generateGlobalTradeOutcome() {
         ? "WIN"
         : "LOSS",
 
-    profit:
-      isWin
-        ? randomResultAmount()
-        : -randomResultAmount(),
+   profit:
+  isWin
+    ? randomProfitAmount()
+    : -randomLossAmount(),
 
     previousTotal:
       totalTrades,
@@ -1164,11 +1165,11 @@ app.get(
       sessionMinutes:
         TRADE_SESSION_MINUTES,
 
-      resultMin:
-        MIN_RESULT,
+    resultMin:
+  MIN_LOSS_RESULT,
 
-      resultMax:
-        MAX_RESULT,
+resultMax:
+  MAX_LOSS_RESULT,
 
       globalWinTarget:
         45,
@@ -4006,8 +4007,8 @@ app.listen(
     );
 
     console.log(
-      `Result range: ₹${MIN_RESULT} - ₹${MAX_RESULT}`
-    );
+  `Result range: ₹${MIN_LOSS_RESULT} - ₹${MAX_LOSS_RESULT}`
+);
 
     console.log(
       `Global target: 45% WIN / 55% LOSS`
