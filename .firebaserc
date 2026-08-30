@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "tradesim-1"
-  }
+  },
+  "targets": {
+    "tradesim-1": {
+      "hosting": {
+        "admin": [
+          "tradesim-1-admin"
+        ],
+        "user": [
+          "tradesim-1"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

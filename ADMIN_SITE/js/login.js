@@ -1,6 +1,6 @@
 import {
   auth
-} from "../../USER_SITE/js/firebase.js";
+} from "./firebase.js";
 
 import {
   signInWithEmailAndPassword,
