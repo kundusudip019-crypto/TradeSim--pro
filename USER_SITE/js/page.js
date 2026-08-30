@@ -1,5 +1,5 @@
 /* =========================================================
-   TradeSim Pro — Dashboard + Trades
+   TradeSim Pro — Dashboard + Trades + History
    VIRTUAL / DEMO TRADING ONLY
 ========================================================= */
 
@@ -212,6 +212,24 @@ function showMessage(
     success
       ? "#67dca5"
       : "#ff7d86";
+
+}
+
+
+function setTextIfExists(
+  id,
+  value
+) {
+
+  const element =
+    $(id);
+
+  if (element) {
+
+    element.textContent =
+      value;
+
+  }
 
 }
 
@@ -532,24 +550,6 @@ function updateUserUI() {
 }
 
 
-function setTextIfExists(
-  id,
-  value
-) {
-
-  const element =
-    $(id);
-
-  if (element) {
-
-    element.textContent =
-      value;
-
-  }
-
-}
-
-
 /* =========================================================
    USER REALTIME LISTENER
 ========================================================= */
@@ -844,7 +844,9 @@ function formatCountdown(
 
     +
 
-    ":" +
+    ":"
+
+    +
 
     String(seconds)
       .padStart(2, "0")
@@ -1256,6 +1258,7 @@ function renderTradesPage(
 
 /* =========================================================
    COMPLETE TRADE HISTORY
+   NEW PREMIUM HISTORY UI
 ========================================================= */
 
 function renderTradeHistory(
@@ -1304,15 +1307,40 @@ function renderTradeHistory(
   }
 
 
+  /* -------------------------------------------------------
+     No trades
+  ------------------------------------------------------- */
+
   if (!trades.length) {
 
-    box.innerHTML =
-      '<div class="empty">No trade history yet.</div>';
+    box.innerHTML = `
+
+      <div class="history-empty">
+
+        <div class="history-empty-icon">
+          📜
+        </div>
+
+        <div class="history-empty-title">
+          No Trade History
+        </div>
+
+        <div class="history-empty-text">
+          Your completed trades will appear here.
+        </div>
+
+      </div>
+
+    `;
 
     return;
 
   }
 
+
+  /* -------------------------------------------------------
+     Only settled trades
+  ------------------------------------------------------- */
 
   const settledTrades =
     trades.filter(
@@ -1329,13 +1357,34 @@ function renderTradeHistory(
 
   if (!settledTrades.length) {
 
-    box.innerHTML =
-      '<div class="empty">No completed trades yet.</div>';
+    box.innerHTML = `
+
+      <div class="history-empty">
+
+        <div class="history-empty-icon">
+          ⏳
+        </div>
+
+        <div class="history-empty-title">
+          No Completed Trades
+        </div>
+
+        <div class="history-empty-text">
+          Completed trades will appear here after settlement.
+        </div>
+
+      </div>
+
+    `;
 
     return;
 
   }
 
+
+  /* -------------------------------------------------------
+     Render every trade as separate box
+  ------------------------------------------------------- */
 
   box.innerHTML =
     settledTrades.map(
@@ -1348,8 +1397,22 @@ function renderTradeHistory(
           );
 
 
+        const amount =
+          Number(
+            trade.amount ||
+            0
+          );
+
+
         const isWin =
           profit >= 0;
+
+
+        const side =
+          String(
+            trade.side ||
+            "TRADE"
+          ).toUpperCase();
 
 
         const result =
@@ -1372,70 +1435,116 @@ function renderTradeHistory(
               );
 
 
+        const date =
+          formatDate(
+            trade.settledAt ||
+            trade.createdAt
+          );
+
+
         return `
 
           <div
-            class="request-row"
+            class="
+              history-trade-card
+              ${isWin
+                ? "history-win"
+                : "history-loss"
+              }
+            "
           >
 
-            <div
-              class="request-main"
-            >
+            <!-- LEFT SIDE -->
 
-              <div
-                class="request-title"
-              >
+            <div class="history-left">
 
-                ${escapeHtml(
-                  String(
-                    trade.side ||
-                    ""
-                  ).toUpperCase()
-                )}
+              <div class="history-top-row">
 
-                •
+                <span
+                  class="
+                    history-side
+                    ${
+                      side === "BUY"
+                        ? "history-buy"
+                        : "history-sell"
+                    }
+                  "
+                >
+                  ${escapeHtml(side)}
+                </span>
 
-                ${escapeHtml(
-                  money(
-                    trade.amount
-                  )
-                )}
+
+                <span
+                  class="
+                    history-result
+                    ${
+                      isWin
+                        ? "history-result-win"
+                        : "history-result-loss"
+                    }
+                  "
+                >
+                  ${escapeHtml(result)}
+                </span>
 
               </div>
 
 
-              <div
-                class="request-meta"
-              >
+              <div class="history-info">
 
-                ${escapeHtml(
-                  result
-                )}
+                <span class="history-label">
+                  Amount
+                </span>
 
-                <br>
+                <span class="history-value">
+                  ${escapeHtml(
+                    money(amount)
+                  )}
+                </span>
 
-                ${escapeHtml(
-                  formatDate(
-                    trade.settledAt ||
-                    trade.createdAt
-                  )
-                )}
+              </div>
+
+
+              <div class="history-date">
+
+                ${escapeHtml(date)}
 
               </div>
 
             </div>
 
 
+            <!-- RIGHT SIDE -->
+
             <div
-              class="request-amount"
-              style="
-                font-weight:800;
+              class="
+                history-profit
+                ${
+                  isWin
+                    ? "profit-green"
+                    : "profit-red"
+                }
               "
             >
 
-              ${escapeHtml(
-                resultAmount
-              )}
+              <span class="history-profit-label">
+
+                ${
+                  isWin
+                    ? "Profit"
+                    : "Loss"
+                }
+
+              </span>
+
+
+              <strong>
+
+                ${escapeHtml(
+                  resultAmount
+                )}
+
+              </strong>
 
             </div>
 
@@ -1480,11 +1589,6 @@ function startOffersListener() {
 
     ]);
 
-
-  /*
-   * If the current HTML does not have an
-   * offers container, still listen to Firestore.
-   */
 
   const offersQuery =
     query(
@@ -1875,10 +1979,6 @@ async function loadReferralData() {
       money(referralEarnings)
     );
 
-
-    /*
-     * Optional referral link.
-     */
 
     const referralLink =
       location.origin +
